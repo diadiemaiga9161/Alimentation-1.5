@@ -1,0 +1,20 @@
+@use "../../themes/themes" as theme;
+.cal-header {
+    .cal-cell {
+        color: theme.$light
+    }
+}
+.cal-day-badge {
+    background-color: theme.$red !important;
+}
+.cal-month-view .cal-open-day-events {
+    background-color: theme.$gray-200;
+    box-shadow: none;
+    color: theme.$foreground;
+}
+.cal-event-action i {
+    vertical-align: middle;
+}
+.cal-month-view .cal-day-cell.cal-today {
+    background: rgba(theme.$primary, .2)
+}

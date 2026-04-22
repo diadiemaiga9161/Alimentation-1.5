@@ -1,0 +1,14 @@
+@use "../../themes/themes" as theme;
+.icon-regular {
+    font-size: 18px;
+    -webkit-font-smoothing: subpixel-antialiased;
+}
+.link-icon {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    color: theme.$foreground;
+    i {
+        margin: 0 8px;
+    }
+}

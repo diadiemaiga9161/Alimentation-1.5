@@ -1,0 +1,44 @@
+// Colors - Thème bleu clair
+$blue:    #2196F3 !default;        // Bleu clair vif
+$indigo:  #3F51B5 !default;        // Indigo
+$purple:  #9C27B0 !default;        // Violet (gardé pour compatibilité)
+$purple-light:  #7E57C2 !default;  // Violet clair
+$pink:    #E91E63 !default;
+$red:     #F44336 !default;
+$orange:  #FF9800 !default;
+$yellow:  #FFC107 !default;
+$green:   #4CAF50 !default;
+$teal:    #009688 !default;
+$cyan:    #00BCD4 !default;
+
+$solid-colors: (
+    "blue": #1976D2,          // Bleu plus clair
+    "midnight-blue": #0D47A1, // Bleu nuit plus clair
+    "indigo": #3F51B5,        // Indigo
+    "dark-purple": #512DA8,   // Violet foncé
+    "purple": #7B1FA2,        // Violet
+    "pink": #C2185B,          // Rose
+    "red": #D32F2F,           // Rouge
+    "gray": #607D8B,          // Gris bleuté
+    "slate-gray": #546E7A     // Gris ardoise
+);
+
+// Gradient colors - Dégradés bleus
+$gradient-colors: (
+  gradient-blue-indigo: (      // Changé de gradient-purple-indigo
+    "start-color": #2196F3,    // Bleu clair
+    "end-color": #3F51B5       // Indigo
+  ),
+  gradient-light-blue: (       // Changé de gradient-black-blue
+    'start-color' : #64B5F6,   // Bleu très clair
+    'end-color' : #1976D2      // Bleu moyen
+  ),
+  gradient-blue-gray: (        // Changé de gradient-black-gray
+    'start-color' : #90A4AE,   // Gris bleuté
+    'end-color' : #455A64      // Gris foncé bleuté
+  ),
+  gradient-steel-blue: (       // Changé de gradient-steel-gray
+    'start-color' : #78909C,   // Gris acier
+    'end-color' : #37474F      // Gris foncé
+  )
+);

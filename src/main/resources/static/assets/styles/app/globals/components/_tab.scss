@@ -1,0 +1,33 @@
+@use "../../themes/themes" as theme;
+.nav-tabs {
+    border: 0;
+    .nav-item {
+        .nav-link {
+            border: 0;
+            padding: 1rem;
+            &:not(.disabled) {
+                color: inherit;
+            }
+            &.active {
+                border-bottom: 2px solid theme.$primary;
+                background: rgba($color: theme.$primary, $alpha: .1);
+            }
+        }
+    }
+}
+
+.tab-content {
+    padding: 1rem;
+}
+.nav-center {
+    .nav-tabs {
+        justify-content: center !important;
+        margin-bottom: 1.5rem;
+    }
+}
+
+.p-0 {
+    .tab-content {
+        padding: 1rem 0;
+    }
+}

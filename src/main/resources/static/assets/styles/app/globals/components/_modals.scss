@@ -1,0 +1,35 @@
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1055;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 1rem 0.5rem;
+    -webkit-overflow-scrolling: touch;
+
+    &.show,
+    &.d-block {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-dialog {
+        position: relative;
+        width: 100%;
+        margin: auto;
+        pointer-events: none;
+        animation-name: zoomIn;
+        animation-duration: 0.3s;
+        animation-timing-function: ease-in-out;
+    }
+
+    .modal-content {
+        position: relative;
+        pointer-events: auto;
+    }
+
+    .modal-body {
+        position: relative;
+    }
+}

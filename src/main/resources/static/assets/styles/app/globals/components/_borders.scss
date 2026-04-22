@@ -1,0 +1,12 @@
+@use "../../themes/themes" as theme;
+@each $name, $value in theme.$theme-colors {
+    .border-bottom-#{$name} {
+        border-bottom: 1px solid $value;
+    }
+}
+
+@each $name, $value in theme.$theme-colors {
+    .border-bottom-dotted-#{$name} {
+        border-bottom: 1px dotted $value;
+    }
+}

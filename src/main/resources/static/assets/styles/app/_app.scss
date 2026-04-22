@@ -1,0 +1,19 @@
+/*
+ *
+ *   GULL - Angular Bootstrap Admin Template
+ *
+ *
+*/
+
+@use 'ngx-toastr/toastr';
+@use "angular-calendar/scss/angular-calendar.scss";
+@use 'highlight.js/styles/github.css';
+@use "../iconsmind/iconsmind.css";
+
+@import 'themes/themes';
+@import 'variables';
+
+// @import 'themes/lite-blue';
+@import 'bootstrap/scss/bootstrap.scss';
+@import "bootstrap-rtl.scss";
+@import 'globals/globals';

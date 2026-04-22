@@ -1,0 +1,267 @@
+/* Global responsive utilities and tweaks
+   Applied site-wide to improve behavior on small/medium/large screens
+   No HTML structure changes. */
+
+// Ensure media elements behave responsively
+img, video, iframe, embed, object {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+// Tables: allow horizontal scrolling on small screens
+.table-responsive, .table-responsive > .table {
+  width: 100%;
+}
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+// Make cards and panels wrap content and avoid overflow
+.card, .panel, .widget {
+  word-wrap: break-word;
+  hyphens: auto;
+}
+
+.form-control,
+.form-select,
+.input-group,
+.btn-group,
+.dropdown-menu {
+  max-width: 100%;
+}
+
+.btn-group,
+.btn-toolbar,
+.pagination {
+  flex-wrap: wrap;
+}
+
+.page-link,
+.nav-tabs .nav-link {
+  white-space: nowrap;
+}
+
+.nav-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.modal {
+  overflow-y: auto;
+}
+
+.modal-dialog {
+  width: auto;
+}
+
+.modal-body {
+  overflow-wrap: anywhere;
+}
+
+// Forms: stack inputs and make buttons full-width on small screens
+@media (max-width: 767px) {
+  .form-row,
+  .form-group,
+  .form-inline {
+    display: block !important;
+    width: 100% !important;
+  }
+  .form-inline .form-control {
+    width: 100% !important;
+    margin-bottom: .5rem;
+  }
+  .btn {
+    width: 100%;
+  }
+}
+
+// Containers: reduce side paddings on small screens
+.container,
+.container-fluid,
+.app-content {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 1200px) {
+  .container {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
+  }
+}
+@media (max-width: 576px) {
+  .container,
+  .container-fluid {
+    padding-left: .5rem;
+    padding-right: .5rem;
+  }
+}
+
+// Make utility widths available on small screens
+@media (max-width: 767px) {
+  .w-sm-100, [w-sm-100] {
+    width: 100% !important;
+  }
+}
+
+// Small tweaks for navigation and breadcrumbs to prevent wrapping issues
+.breadcrumb,
+.navbar,
+.page-title {
+  word-break: break-word;
+}
+
+// Modals: fit on mobile
+@media (max-width: 575.98px) {
+  .modal-dialog {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+  }
+  .modal-content {
+    border-radius: .25rem;
+  }
+}
+
+// Data tables and long content: ensure readable overflow
+@media (max-width: 991.98px) {
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4,
+  .card-header.d-flex.justify-content-between.align-items-center,
+  .alert .d-flex.justify-content-between.align-items-center {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.75rem;
+  }
+
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2,
+  .card-header.d-flex.justify-content-between.align-items-center > div:last-child {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 > .btn,
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 > .dropdown,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 > .btn,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 > .dropdown {
+    flex: 1 1 220px;
+  }
+
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 .btn,
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 .dropdown-toggle,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 .btn,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2 .dropdown-toggle {
+    width: 100%;
+  }
+
+  .row.g-3.align-items-center > [class*="col-"],
+  .row.g-3 > [class*="col-"] {
+    width: 100%;
+  }
+
+  .data-table-wrapper,
+  .table-responsive {
+    overflow-x: auto;
+  }
+
+  .table-responsive {
+    border-radius: 0.75rem;
+  }
+
+  .table-responsive .table th,
+  .table-responsive .table td {
+    white-space: nowrap;
+  }
+}
+
+// Sidebar behaviour: allow overflow and ensure it doesn't push content on small screens
+@media (max-width: 991.98px) {
+  .sidebar,
+  .app-sidebar {
+    position: relative;
+    transform: none !important;
+    width: 100% !important;
+  }
+}
+
+// Accessibility: increase tap targets on small screens
+@media (max-width: 767.98px) {
+  a, button, .btn {
+    min-height: 44px;
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+  }
+
+  .container-fluid.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2,
+  .container.py-4 > .d-flex.justify-content-between.align-items-center.mb-4 > .d-flex.gap-2,
+  .card-header.d-flex.justify-content-between.align-items-center > div:last-child,
+  .card-body .d-flex.gap-2,
+  .card-body .btn-group,
+  .modal-footer {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .card-body .d-flex.gap-2 > *,
+  .card-body .btn-group > *,
+  .modal-footer > * {
+    width: 100%;
+  }
+
+  .input-group {
+    flex-wrap: wrap;
+  }
+
+  .input-group > .form-control,
+  .input-group > .form-select,
+  .input-group > .input-group-text,
+  .input-group > .btn {
+    width: 100%;
+    border-radius: 0.5rem !important;
+  }
+
+  .input-group > .input-group-text {
+    justify-content: center;
+  }
+
+  .h3,
+  h3 {
+    font-size: 1.4rem;
+  }
+
+  .display-6 {
+    font-size: 1.5rem;
+  }
+
+  .table-responsive .table {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .card-body,
+  .card-header,
+  .card-footer {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .badge {
+    white-space: normal;
+  }
+}
+
+// Utility: force images inside cards to not overflow
+.card img {
+  max-width: 100%;
+  height: auto;
+}
+
+// Final safety: ensure no horizontal scroll caused by fixed-width elements
+body {
+  overflow-x: hidden;
+}
