@@ -19,6 +19,10 @@ public class OperationCaisse {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "caisse_id")
+    private Caisse caisse;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private TypeOperationCaisse type;
@@ -78,16 +82,30 @@ public class OperationCaisse {
     @Column(name = "periode")
     private String periode;
 
+    // NOUVEAU FLAG POUR INDIQUER QUE LA VENTE ASSOCIÉE EST ANNULÉE
+    @Column(name = "vente_annulee")
+    private Boolean venteAnnulee = false;
+
     @PrePersist
     protected void onCreate() {
         dateOperation = LocalDateTime.now();
         if (type == TypeOperationCaisse.VENTE_CREDIT) {
-            montantRestant = montant;
-            montantVerse = 0.0;
-        } else if (type == TypeOperationCaisse.REGLEMENT_CREDIT) {
-            if (montantRestant != null) {
-                montantRestant -= montant;
+            if (montantVerse == null) {
+                montantVerse = 0.0;
             }
+            if (montantRestant == null || montantRestant <= 0) {
+                montantRestant = Math.max(0.0, montant - montantVerse);
+            }
+        } else if (type == TypeOperationCaisse.REGLEMENT_CREDIT) {
+            if (montantVerse == null) {
+                montantVerse = montant;
+            }
+            if (montantRestant == null) {
+                montantRestant = 0.0;
+            }
+        }
+        if (venteAnnulee == null) {
+            venteAnnulee = false;
         }
     }
 }

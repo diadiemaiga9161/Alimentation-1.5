@@ -1,6 +1,9 @@
 package com.ges.boutique.produit;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.ges.boutique.fournisseur.Fournisseur;
+import com.ges.boutique.vente.LigneVente;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,12 +12,15 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "produits")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // Ignorer les proxies Hibernate
 public class Produit {
 
     @Id
@@ -79,6 +85,13 @@ public class Produit {
 
     @Column(name = "date_modification")
     private LocalDateTime dateModification;
+
+    @Column(name = "type_vente")
+    private String typeVente; // "DETAIL" ou "ENGROS"
+
+    @OneToMany(mappedBy = "produit", fetch = FetchType.LAZY)
+    @JsonIgnore // Ignorer complètement la collection lors de la sérialisation JSON
+    private List<LigneVente> lignesVente = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

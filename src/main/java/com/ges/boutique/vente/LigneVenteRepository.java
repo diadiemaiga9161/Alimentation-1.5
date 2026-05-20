@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public interface LigneVenteRepository extends JpaRepository<LigneVente, Long> {
 
-    // NOUVELLE MÉTHODE : Supprimer toutes les lignes d'une vente
     @Modifying
     @Transactional
     @Query("DELETE FROM LigneVente l WHERE l.vente.id = :venteId")

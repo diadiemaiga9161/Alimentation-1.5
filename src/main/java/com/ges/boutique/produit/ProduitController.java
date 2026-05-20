@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,11 +31,74 @@ public class ProduitController {
     private final ProduitService produitService;
     private final CategorieService categorieService;
 
+    // ==================== PRODUITS ====================
+
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir tous les produits")
-    public ResponseEntity<List<Produit>> obtenirTousLesProduits() {
-        return ResponseEntity.ok(produitService.obtenirTousLesProduits());
+    public ResponseEntity<List<Map<String, Object>>> obtenirTousLesProduits() {
+        List<Produit> produits = produitService.obtenirTousLesProduits();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("description", p.getDescription());
+            map.put("prixAchat", p.getPrixAchat());
+            map.put("prixVente", p.getPrixVente());
+            map.put("quantite", p.getQuantite());
+            map.put("seuilAlerte", p.getSeuilAlerte());
+            map.put("codeBarre", p.getCodeBarre());
+            map.put("dateCreation", p.getDateCreation() != null ? p.getDateCreation().toString() : null);
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+            map.put("lotNumber", p.getLotNumber());
+            map.put("conditionsStockage", p.getConditionsStockage());
+            map.put("poidsVolume", p.getPoidsVolume());
+            map.put("uniteMesure", p.getUniteMesure());
+            map.put("bio", p.isBio());
+            map.put("origine", p.getOrigine());
+            map.put("typeVente", p.getTypeVente());
+            map.put("dateAjout", p.getDateAjout() != null ? p.getDateAjout().toString() : null);
+            map.put("dateModification", p.getDateModification() != null ? p.getDateModification().toString() : null);
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            catMap.put("description", p.getCategorie().getDescription());
+            catMap.put("dateCreation", p.getCategorie().getDateCreation() != null ? p.getCategorie().getDateCreation().toString() : null);
+            map.put("categorie", catMap);
+
+            if (p.getFournisseur() != null) {
+                Map<String, Object> fourMap = new HashMap<>();
+                fourMap.put("id", p.getFournisseur().getId());
+                fourMap.put("nom", p.getFournisseur().getNom());
+                fourMap.put("code", p.getFournisseur().getCode());
+                fourMap.put("actif", p.getFournisseur().isActif());
+                map.put("fournisseur", fourMap);
+            }
+
+            LocalDate today = LocalDate.now();
+            boolean stockFaible = p.getQuantite() <= p.getSeuilAlerte();
+            map.put("stockFaible", stockFaible);
+
+            boolean perime = p.getDatePeremption() != null && p.getDatePeremption().isBefore(today);
+            map.put("perime", perime);
+
+            boolean prochePeremption = p.getDatePeremption() != null &&
+                    !p.getDatePeremption().isBefore(today) &&
+                    p.getDatePeremption().isBefore(today.plusDays(7));
+            map.put("prochePeremption", prochePeremption);
+
+            double marge = p.getPrixVente() - p.getPrixAchat();
+            map.put("marge", marge);
+
+            double tauxMarge = p.getPrixAchat() > 0 ? ((p.getPrixVente() - p.getPrixAchat()) / p.getPrixAchat()) * 100 : 0;
+            map.put("tauxMarge", tauxMarge);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/dto")
@@ -99,8 +165,37 @@ public class ProduitController {
     @GetMapping("/categorie/{categorieId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les produits par catégorie")
-    public ResponseEntity<List<Produit>> obtenirProduitsParCategorie(@PathVariable Long categorieId) {
-        return ResponseEntity.ok(produitService.obtenirProduitsParCategorie(categorieId));
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsParCategorie(@PathVariable Long categorieId) {
+        List<Produit> produits = produitService.obtenirProduitsParCategorie(categorieId);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("prixAchat", p.getPrixAchat());
+            map.put("prixVente", p.getPrixVente());
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+            map.put("seuilAlerte", p.getSeuilAlerte());
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+            map.put("bio", p.isBio());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            if (p.getFournisseur() != null) {
+                Map<String, Object> fourMap = new HashMap<>();
+                fourMap.put("id", p.getFournisseur().getId());
+                fourMap.put("nom", p.getFournisseur().getNom());
+                map.put("fournisseur", fourMap);
+            }
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/categorie/{categorieId}/dto")
@@ -114,8 +209,29 @@ public class ProduitController {
     @GetMapping("/fournisseur/{fournisseurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les produits par fournisseur")
-    public ResponseEntity<List<Produit>> obtenirProduitsParFournisseur(@PathVariable Long fournisseurId) {
-        return ResponseEntity.ok(produitService.obtenirProduitsParFournisseur(fournisseurId));
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsParFournisseur(@PathVariable Long fournisseurId) {
+        List<Produit> produits = produitService.obtenirProduitsParFournisseur(fournisseurId);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("prixAchat", p.getPrixAchat());
+            map.put("prixVente", p.getPrixVente());
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+            map.put("seuilAlerte", p.getSeuilAlerte());
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+            map.put("bio", p.isBio());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/fournisseur/{fournisseurId}/dto")
@@ -129,8 +245,34 @@ public class ProduitController {
     @GetMapping("/recherche")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Rechercher des produits")
-    public ResponseEntity<List<Produit>> rechercherProduits(@RequestParam String motCle) {
-        return ResponseEntity.ok(produitService.rechercherProduits(motCle));
+    public ResponseEntity<List<Map<String, Object>>> rechercherProduits(@RequestParam String motCle) {
+        List<Produit> produits = produitService.rechercherProduits(motCle);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("prixAchat", p.getPrixAchat());
+            map.put("prixVente", p.getPrixVente());
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            if (p.getFournisseur() != null) {
+                Map<String, Object> fourMap = new HashMap<>();
+                fourMap.put("id", p.getFournisseur().getId());
+                fourMap.put("nom", p.getFournisseur().getNom());
+                map.put("fournisseur", fourMap);
+            }
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/recherche/dto")
@@ -144,8 +286,27 @@ public class ProduitController {
     @GetMapping("/stock-faible")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Obtenir les produits en stock faible")
-    public ResponseEntity<List<Produit>> obtenirProduitsStockFaible() {
-        return ResponseEntity.ok(produitService.obtenirProduitsStockFaible());
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsStockFaible() {
+        List<Produit> produits = produitService.obtenirProduitsStockFaible();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("quantite", p.getQuantite());
+            map.put("seuilAlerte", p.getSeuilAlerte());
+            map.put("uniteMesure", p.getUniteMesure());
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/stock-faible/dto")
@@ -159,8 +320,26 @@ public class ProduitController {
     @GetMapping("/perimes")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Obtenir les produits périmés")
-    public ResponseEntity<List<Produit>> obtenirProduitsPerimes() {
-        return ResponseEntity.ok(produitService.obtenirProduitsPerimes());
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsPerimes() {
+        List<Produit> produits = produitService.obtenirProduitsPerimes();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/perimes/dto")
@@ -174,9 +353,27 @@ public class ProduitController {
     @GetMapping("/proche-peremption")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Obtenir les produits proches de péremption")
-    public ResponseEntity<List<Produit>> obtenirProduitsProchePeremption(
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsProchePeremption(
             @RequestParam(defaultValue = "7") int jours) {
-        return ResponseEntity.ok(produitService.obtenirProduitsProchePeremption(jours));
+        List<Produit> produits = produitService.obtenirProduitsProchePeremption(jours);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("datePeremption", p.getDatePeremption() != null ? p.getDatePeremption().toString() : null);
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/proche-peremption/dto")
@@ -191,8 +388,27 @@ public class ProduitController {
     @GetMapping("/bio")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les produits bio")
-    public ResponseEntity<List<Produit>> obtenirProduitsBio() {
-        return ResponseEntity.ok(produitService.obtenirProduitsBio());
+    public ResponseEntity<List<Map<String, Object>>> obtenirProduitsBio() {
+        List<Produit> produits = produitService.obtenirProduitsBio();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Produit p : produits) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("nom", p.getNom());
+            map.put("bio", p.isBio());
+            map.put("prixVente", p.getPrixVente());
+            map.put("quantite", p.getQuantite());
+            map.put("uniteMesure", p.getUniteMesure());
+
+            Map<String, Object> catMap = new HashMap<>();
+            catMap.put("id", p.getCategorie().getId());
+            catMap.put("nom", p.getCategorie().getNom());
+            map.put("categorie", catMap);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/bio/dto")
@@ -206,8 +422,30 @@ public class ProduitController {
     @GetMapping("/code-barre/{codeBarre}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir un produit par code-barre")
-    public ResponseEntity<Produit> obtenirProduitParCodeBarre(@PathVariable String codeBarre) {
-        return ResponseEntity.ok(produitService.obtenirProduitParCodeBarre(codeBarre));
+    public ResponseEntity<Map<String, Object>> obtenirProduitParCodeBarre(@PathVariable String codeBarre) {
+        Produit p = produitService.obtenirProduitParCodeBarre(codeBarre);
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", p.getId());
+        map.put("nom", p.getNom());
+        map.put("prixAchat", p.getPrixAchat());
+        map.put("prixVente", p.getPrixVente());
+        map.put("quantite", p.getQuantite());
+        map.put("uniteMesure", p.getUniteMesure());
+        map.put("codeBarre", p.getCodeBarre());
+
+        Map<String, Object> catMap = new HashMap<>();
+        catMap.put("id", p.getCategorie().getId());
+        catMap.put("nom", p.getCategorie().getNom());
+        map.put("categorie", catMap);
+
+        if (p.getFournisseur() != null) {
+            Map<String, Object> fourMap = new HashMap<>();
+            fourMap.put("id", p.getFournisseur().getId());
+            fourMap.put("nom", p.getFournisseur().getNom());
+            map.put("fournisseur", fourMap);
+        }
+
+        return ResponseEntity.ok(map);
     }
 
     @GetMapping("/code-barre/{codeBarre}/dto")
@@ -225,11 +463,24 @@ public class ProduitController {
         return ResponseEntity.ok(produitService.obtenirStatistiquesStock());
     }
 
+    // ==================== CATÉGORIES ====================
+
     @GetMapping("/categories")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir toutes les catégories")
-    public ResponseEntity<List<Categorie>> obtenirToutesCategories() {
-        return ResponseEntity.ok(categorieService.obtenirToutesCategories());
+    public ResponseEntity<List<Map<String, Object>>> obtenirToutesCategories() {
+        List<Categorie> categories = categorieService.obtenirToutesCategories();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Categorie c : categories) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", c.getId());
+            map.put("nom", c.getNom());
+            map.put("description", c.getDescription());
+            map.put("dateCreation", c.getDateCreation() != null ? c.getDateCreation().toString() : null);
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/categories/dto")
@@ -243,8 +494,14 @@ public class ProduitController {
     @GetMapping("/categories/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir une catégorie par ID")
-    public ResponseEntity<Categorie> obtenirCategorieParId(@PathVariable Long id) {
-        return ResponseEntity.ok(categorieService.obtenirCategorieParId(id));
+    public ResponseEntity<Map<String, Object>> obtenirCategorieParId(@PathVariable Long id) {
+        Categorie c = categorieService.obtenirCategorieParId(id);
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", c.getId());
+        map.put("nom", c.getNom());
+        map.put("description", c.getDescription());
+        map.put("dateCreation", c.getDateCreation() != null ? c.getDateCreation().toString() : null);
+        return ResponseEntity.ok(map);
     }
 
     @GetMapping("/categories/{id}/dto")
@@ -300,11 +557,46 @@ public class ProduitController {
         return ResponseEntity.ok(categorieService.existeParNom(nom));
     }
 
+    // ==================== FOURNISSEURS ====================
+
     @GetMapping("/fournisseurs")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir tous les fournisseurs")
-    public ResponseEntity<List<Fournisseur>> obtenirTousLesFournisseurs() {
-        return ResponseEntity.ok(produitService.obtenirTousLesFournisseurs());
+    public ResponseEntity<List<Map<String, Object>>> obtenirTousLesFournisseurs() {
+        List<Fournisseur> fournisseurs = produitService.obtenirTousLesFournisseurs();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Fournisseur f : fournisseurs) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", f.getId());
+            map.put("nom", f.getNom());
+            map.put("code", f.getCode());
+            map.put("adresse", f.getAdresse());
+            map.put("telephone", f.getTelephone());
+            map.put("email", f.getEmail());
+            map.put("siteWeb", f.getSiteWeb());
+            map.put("contactNom", f.getContactNom());
+            map.put("contactTelephone", f.getContactTelephone());
+            map.put("contactEmail", f.getContactEmail());
+            map.put("description", f.getDescription());
+            map.put("typeProduits", f.getTypeProduits());
+            map.put("conditionsPaiement", f.getConditionsPaiement());
+            map.put("delaiLivraison", f.getDelaiLivraison());
+            map.put("note", f.getNote());
+            map.put("actif", f.isActif());
+            map.put("dateAjout", f.getDateAjout() != null ? f.getDateAjout().toString() : null);
+            map.put("dateModification", f.getDateModification() != null ? f.getDateModification().toString() : null);
+            map.put("totalAchats", f.getTotalAchats());
+            map.put("totalPaye", f.getTotalPaye());
+            map.put("solde", f.getSolde());
+
+            // CORRECTION: Utiliser la nouvelle méthode
+            int nombreProduits = produitService.compterProduitsParFournisseur(f.getId());
+            map.put("nombreProduits", (long) nombreProduits);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/fournisseurs/dto")
@@ -318,8 +610,21 @@ public class ProduitController {
     @GetMapping("/fournisseurs/actifs")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les fournisseurs actifs")
-    public ResponseEntity<List<Fournisseur>> obtenirFournisseursActifs() {
-        return ResponseEntity.ok(produitService.obtenirFournisseursActifs());
+    public ResponseEntity<List<Map<String, Object>>> obtenirFournisseursActifs() {
+        List<Fournisseur> fournisseurs = produitService.obtenirFournisseursActifs();
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Fournisseur f : fournisseurs) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", f.getId());
+            map.put("nom", f.getNom());
+            map.put("code", f.getCode());
+            map.put("contactNom", f.getContactNom());
+            map.put("telephone", f.getTelephone());
+            map.put("actif", f.isActif());
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/fournisseurs/actifs/dto")
@@ -333,9 +638,33 @@ public class ProduitController {
     @GetMapping("/fournisseurs/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir un fournisseur par ID")
-    public ResponseEntity<Fournisseur> obtenirFournisseurParId(@PathVariable Long id) {
-        return ResponseEntity.ok(produitService.obtenirFournisseurParId(id));
+    public ResponseEntity<Map<String, Object>> obtenirFournisseurParId(@PathVariable Long id) {
+        Fournisseur f = produitService.obtenirFournisseurParId(id);
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", f.getId());
+        map.put("nom", f.getNom());
+        map.put("code", f.getCode());
+        map.put("adresse", f.getAdresse());
+        map.put("telephone", f.getTelephone());
+        map.put("email", f.getEmail());
+        map.put("siteWeb", f.getSiteWeb());
+        map.put("contactNom", f.getContactNom());
+        map.put("contactTelephone", f.getContactTelephone());
+        map.put("contactEmail", f.getContactEmail());
+        map.put("description", f.getDescription());
+        map.put("typeProduits", f.getTypeProduits());
+        map.put("conditionsPaiement", f.getConditionsPaiement());
+        map.put("delaiLivraison", f.getDelaiLivraison());
+        map.put("note", f.getNote());
+        map.put("actif", f.isActif());
+
+        // CORRECTION: Utiliser la nouvelle méthode
+        int nombreProduits = produitService.compterProduitsParFournisseur(f.getId());
+        map.put("nombreProduits", (long) nombreProduits);
+
+        return ResponseEntity.ok(map);
     }
+
 
     @GetMapping("/fournisseurs/{id}/dto")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -401,9 +730,28 @@ public class ProduitController {
     @GetMapping("/fournisseurs/recherche")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Rechercher des fournisseurs")
-    public ResponseEntity<List<Fournisseur>> rechercherFournisseurs(@RequestParam String motCle) {
-        return ResponseEntity.ok(produitService.rechercherFournisseurs(motCle));
+    public ResponseEntity<List<Map<String, Object>>> rechercherFournisseurs(@RequestParam String motCle) {
+        List<Fournisseur> fournisseurs = produitService.rechercherFournisseurs(motCle);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Fournisseur f : fournisseurs) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", f.getId());
+            map.put("nom", f.getNom());
+            map.put("code", f.getCode());
+            map.put("contactNom", f.getContactNom());
+            map.put("telephone", f.getTelephone());
+            map.put("actif", f.isActif());
+
+            // CORRECTION: Utiliser la nouvelle méthode
+            int nombreProduits = produitService.compterProduitsParFournisseur(f.getId());
+            map.put("nombreProduits", (long) nombreProduits);
+
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
+
 
     @GetMapping("/fournisseurs/recherche/dto")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -412,6 +760,8 @@ public class ProduitController {
         List<Fournisseur> fournisseurs = produitService.rechercherFournisseurs(motCle);
         return ResponseEntity.ok(produitService.convertirFournisseursEnDto(fournisseurs));
     }
+
+    // ==================== IMPORT/EXPORT ====================
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
@@ -468,9 +818,7 @@ public class ProduitController {
     public ResponseEntity<Resource> telechargerTemplate() {
         try {
             byte[] excelData = produitService.genererTemplateExcel();
-
             ByteArrayResource resource = new ByteArrayResource(excelData);
-
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=template-produits-alimentaires.xlsx")
@@ -487,11 +835,8 @@ public class ProduitController {
     public ResponseEntity<Resource> exporterProduits() {
         try {
             byte[] excelData = produitService.exporterProduitsVersExcel();
-
             ByteArrayResource resource = new ByteArrayResource(excelData);
-
             String fileName = "produits-alimentaires-" + java.time.LocalDate.now() + ".xlsx";
-
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=" + fileName)
@@ -508,11 +853,8 @@ public class ProduitController {
     public ResponseEntity<Resource> exporterFournisseurs() {
         try {
             byte[] excelData = produitService.exporterFournisseursVersExcel();
-
             ByteArrayResource resource = new ByteArrayResource(excelData);
-
             String fileName = "fournisseurs-" + java.time.LocalDate.now() + ".xlsx";
-
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=" + fileName)

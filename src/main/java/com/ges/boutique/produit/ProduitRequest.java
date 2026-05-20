@@ -22,4 +22,5 @@ public class ProduitRequest {
     private String uniteMesure;
     private boolean bio;
     private String origine;
+    private String typeVente; // "DETAIL" ou "ENGROS"
 }

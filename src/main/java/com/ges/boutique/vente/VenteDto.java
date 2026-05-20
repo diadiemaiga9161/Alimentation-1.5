@@ -1,7 +1,6 @@
 package com.ges.boutique.vente;
 
 import lombok.Data;
-
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -11,7 +10,12 @@ public class VenteDto {
     private String numeroVente;
     private Long vendeurId;
     private String vendeurNom;
-    private VendeurDto vendeur; // Nouveau champ
+    private VendeurDto vendeur;
+    private Long clientId;
+    private String clientNom;
+    private String clientPrenom;
+    private String clientTelephone;
+    private Boolean clientDivers;
     private List<LigneVenteDto> lignes;
     private Double montantTotal;
     private Double montantRemiseTotal;
@@ -21,4 +25,13 @@ public class VenteDto {
     private ModePaiement modePaiement;
     private String referencePaiement;
     private LocalDateTime dateVente;
+    private Boolean estCredit;
+    private Double montantVerse;
+    private Double montantRestant;
+    private Boolean creditRegle;
+
+    // Champs pour l'annulation
+    private Boolean annulee;
+    private String motifAnnulation;
+    private LocalDateTime dateAnnulation;
 }

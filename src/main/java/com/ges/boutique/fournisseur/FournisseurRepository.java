@@ -27,4 +27,6 @@ public interface FournisseurRepository extends JpaRepository<Fournisseur, Long> 
 
     @Query("SELECT f FROM Fournisseur f ORDER BY f.note DESC")
     List<Fournisseur> trouverMeilleursFournisseurs();
+
+
 }

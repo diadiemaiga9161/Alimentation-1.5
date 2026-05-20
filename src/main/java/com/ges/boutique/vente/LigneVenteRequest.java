@@ -6,6 +6,7 @@ import lombok.Data;
 public class LigneVenteRequest {
     private Long produitId;
     private Integer quantite;
-    private Double remisePourcentage;  // Nouveau champ
-    private Double remiseMontant;      // Nouveau champ
+    private Double prixUnitaire;        // Prix modifiable à la volée
+    private Double remisePourcentage;
+    private Double remiseMontant;
 }

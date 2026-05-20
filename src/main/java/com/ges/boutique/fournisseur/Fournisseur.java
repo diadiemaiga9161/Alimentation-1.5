@@ -1,6 +1,7 @@
 package com.ges.boutique.fournisseur;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.ges.boutique.produit.Produit;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -69,9 +70,26 @@ public class Fournisseur {
     @Column(name = "date_modification")
     private LocalDateTime dateModification;
 
+    @Column(name = "total_achats", nullable = false)
+    private Double totalAchats = 0.0;
+
+    @Column(name = "total_paye", nullable = false)
+    private Double totalPaye = 0.0;
+
+    @Column(name = "solde", nullable = false)
+    private Double solde = 0.0;
+
     @OneToMany(mappedBy = "fournisseur", fetch = FetchType.LAZY)
-    @JsonIgnore // Ignorer la sérialisation de cette collection pour éviter LazyInitializationException
+    @JsonIgnore
     private List<Produit> produits = new ArrayList<>();
+
+    @OneToMany(mappedBy = "fournisseur", fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<AchatFournisseur> achats = new ArrayList<>();
+
+    @OneToMany(mappedBy = "fournisseur", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<PaiementFournisseur> paiements = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

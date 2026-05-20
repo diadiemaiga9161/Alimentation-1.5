@@ -1,21 +1,28 @@
 package com.ges.boutique.caisse;
 
+import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.exception.SoldeInsuffisantException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.transaction.annotation.Transactional;
 
+
+
+@Transactional  // Ajoutez cette annotation
 @RestController
 @RequestMapping("/api/caisse")
 @RequiredArgsConstructor
@@ -23,6 +30,18 @@ import java.util.Map;
 public class CaisseController {
 
     private final CaisseService caisseService;
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Test de connexion")
+    public ResponseEntity<Map<String, Object>> test() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "API Caisse disponible");
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== GESTION DES CAISSES ====================
 
     @PostMapping("/ouvrir")
     @PreAuthorize("hasRole('ADMIN')")
@@ -99,6 +118,8 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
+    // ==================== OPÉRATIONS DE CAISSE ====================
+
     @PostMapping("/entree")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Ajouter une entrée en caisse")
@@ -132,6 +153,8 @@ public class CaisseController {
         response.put("operation", operation);
         return ResponseEntity.ok(response);
     }
+
+    // ==================== GESTION DES CRÉDITS ====================
 
     @GetMapping("/credits")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -200,6 +223,8 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
+    // ==================== OPÉRATIONS PAR PÉRIODE ====================
+
     @GetMapping("/operations/aujourdhui")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les opérations du jour")
@@ -264,6 +289,8 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
+    // ==================== STATISTIQUES CAISSE ====================
+
     @GetMapping("/statistiques/aujourdhui")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les statistiques du jour")
@@ -322,74 +349,7 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/rapports/journalier")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Générer le rapport journalier PDF")
-    public ResponseEntity<byte[]> genererRapportJournalier(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        LocalDate dateRapport = date != null ? date : LocalDate.now();
-        byte[] rapport = caisseService.genererRapportJournalier(dateRapport);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("filename", "rapport-caisse-" + dateRapport + ".pdf");
-        return ResponseEntity.ok().headers(headers).body(rapport);
-    }
-
-    @GetMapping("/rapports/hebdomadaire")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Générer le rapport hebdomadaire PDF")
-    public ResponseEntity<byte[]> genererRapportHebdomadaire(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate debutSemaine,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate finSemaine) {
-        LocalDate debut = debutSemaine != null ? debutSemaine : LocalDate.now().with(java.time.DayOfWeek.MONDAY);
-        LocalDate fin = finSemaine != null ? finSemaine : debut.plusDays(6);
-        byte[] rapport = caisseService.genererRapportHebdomadaire(debut, fin);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("filename", "rapport-caisse-semaine-" + debut + "-" + fin + ".pdf");
-        return ResponseEntity.ok().headers(headers).body(rapport);
-    }
-
-    @GetMapping("/rapports/mensuel")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Générer le rapport mensuel PDF")
-    public ResponseEntity<byte[]> genererRapportMensuel(
-            @RequestParam(required = false) Integer annee,
-            @RequestParam(required = false) Integer mois) {
-        int anneeRapport = annee != null ? annee : LocalDate.now().getYear();
-        int moisRapport = mois != null ? mois : LocalDate.now().getMonthValue();
-        byte[] rapport = caisseService.genererRapportMensuel(anneeRapport, moisRapport);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("filename", "rapport-caisse-" + anneeRapport + "-" + moisRapport + ".pdf");
-        return ResponseEntity.ok().headers(headers).body(rapport);
-    }
-
-    @GetMapping("/rapports/annuel")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Générer le rapport annuel PDF")
-    public ResponseEntity<byte[]> genererRapportAnnuel(
-            @RequestParam(required = false) Integer annee) {
-        int anneeRapport = annee != null ? annee : LocalDate.now().getYear();
-        byte[] rapport = caisseService.genererRapportAnnuel(anneeRapport);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("filename", "rapport-caisse-" + anneeRapport + ".pdf");
-        return ResponseEntity.ok().headers(headers).body(rapport);
-    }
-
-    @GetMapping("/rapports/personnalise")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Générer un rapport personnalisé PDF")
-    public ResponseEntity<byte[]> genererRapportPersonnalise(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        byte[] rapport = caisseService.genererRapportPersonnalise(dateDebut, dateFin);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("filename", "rapport-caisse-" + dateDebut + "-" + dateFin + ".pdf");
-        return ResponseEntity.ok().headers(headers).body(rapport);
-    }
+    // ==================== REVENUS ET PERTES ====================
 
     @GetMapping("/revenus-pertes")
     @PreAuthorize("hasRole('ADMIN')")
@@ -397,64 +357,113 @@ public class CaisseController {
     public ResponseEntity<Map<String, Object>> getRevenusEtPertesParPeriode(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-
         Map<String, Object> resultats = caisseService.getRevenusEtPertesParPeriode(dateDebut, dateFin);
-
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("resultats", resultats);
-
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/revenus-pertes/semaine")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les revenus et pertes de la semaine")
-    public ResponseEntity<Map<String, Object>> getRevenusEtPertesSemaine() {
-        LocalDate aujourdhui = LocalDate.now();
-        LocalDate debutSemaine = aujourdhui.with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
-        LocalDate finSemaine = aujourdhui.with(TemporalAdjusters.nextOrSame(java.time.DayOfWeek.SUNDAY));
+    // ==================== VENTES COMPTANT/CRÉDIT ====================
 
-        Map<String, Object> resultats = caisseService.getRevenusEtPertesParPeriode(debutSemaine, finSemaine);
-
+    @GetMapping("/ventes/comptant/aujourdhui")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes comptant du jour")
+    public ResponseEntity<Map<String, Object>> getVentesComptantDuJour() {
+        Map<String, Object> ventes = caisseService.getVentesComptantDuJour();
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("resultats", resultats);
-
+        response.put("ventes", ventes);
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/revenus-pertes/mois")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les revenus et pertes du mois")
-    public ResponseEntity<Map<String, Object>> getRevenusEtPertesMois() {
-        LocalDate aujourdhui = LocalDate.now();
-        LocalDate debutMois = aujourdhui.withDayOfMonth(1);
-        LocalDate finMois = aujourdhui.withDayOfMonth(aujourdhui.lengthOfMonth());
-
-        Map<String, Object> resultats = caisseService.getRevenusEtPertesParPeriode(debutMois, finMois);
-
+    @GetMapping("/ventes/credit/aujourdhui")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes à crédit du jour")
+    public ResponseEntity<Map<String, Object>> getVentesCreditDuJour() {
+        Map<String, Object> ventes = caisseService.getVentesCreditDuJour();
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("resultats", resultats);
-
+        response.put("ventes", ventes);
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/revenus-pertes/annee")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les revenus et pertes de l'année")
-    public ResponseEntity<Map<String, Object>> getRevenusEtPertesAnnee() {
-        LocalDate aujourdhui = LocalDate.now();
-        LocalDate debutAnnee = aujourdhui.withDayOfYear(1);
-        LocalDate finAnnee = aujourdhui.withDayOfYear(aujourdhui.lengthOfYear());
-
-        Map<String, Object> resultats = caisseService.getRevenusEtPertesParPeriode(debutAnnee, finAnnee);
-
+    @GetMapping("/ventes/comptant/periode")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes comptant sur une période")
+    public ResponseEntity<Map<String, Object>> getVentesComptantParPeriode(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
+        Map<String, Object> ventes = caisseService.getVentesComptantParPeriode(dateDebut, dateFin);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("resultats", resultats);
-
+        response.put("ventes", ventes);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/ventes/credit/periode")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes à crédit sur une période")
+    public ResponseEntity<Map<String, Object>> getVentesCreditParPeriode(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
+        Map<String, Object> ventes = caisseService.getVentesCreditParPeriode(dateDebut, dateFin);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("ventes", ventes);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/ventes/statistiques")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les statistiques des ventes comptant/crédit")
+    public ResponseEntity<Map<String, Object>> getStatistiquesVentesComptantCredit() {
+        Map<String, Object> stats = caisseService.getStatistiquesVentesComptantCredit();
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("statistiques", stats);
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== GESTION DES ERREURS ====================
+
+    @ExceptionHandler(RessourceIntrouvableException.class)
+    public ResponseEntity<Map<String, Object>> handleRessourceIntrouvable(RessourceIntrouvableException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", e.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(SoldeInsuffisantException.class)
+    public ResponseEntity<Map<String, Object>> handleSoldeInsuffisant(SoldeInsuffisantException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGeneralException(Exception e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", "Une erreur interne est survenue: " + e.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }

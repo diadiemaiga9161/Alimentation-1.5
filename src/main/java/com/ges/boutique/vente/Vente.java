@@ -1,6 +1,7 @@
 package com.ges.boutique.vente;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.ges.boutique.client.Client;
 import com.ges.boutique.utilisateur.Utilisateur;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -34,6 +35,10 @@ public class Vente {
     @JoinColumn(name = "vendeur_id", nullable = false)
     private Utilisateur vendeur;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
     @OneToMany(mappedBy = "vente", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     @JsonManagedReference
     private List<LigneVente> lignes = new ArrayList<>();
@@ -46,6 +51,9 @@ public class Vente {
 
     @Column(name = "montant_apres_remise")
     private Double montantApresRemise = 0.0;
+
+    @Column(name = "benefice_total", nullable = false)
+    private Double beneficeTotal = 0.0;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "mode_paiement", nullable = false)
@@ -64,21 +72,29 @@ public class Vente {
     @Enumerated(EnumType.STRING)
     private RemiseType typeRemiseGlobale;
 
-    // Nouveaux champs pour les crédits
     @Column(name = "est_credit")
     private Boolean estCredit = false;
 
     @Column(name = "client_nom")
     private String clientNom;
 
+    @Column(name = "client_prenom")
+    private String clientPrenom;
+
     @Column(name = "client_telephone")
     private String clientTelephone;
+
+    @Column(name = "client_divers")
+    private Boolean clientDivers = true;
 
     @Column(name = "date_echeance")
     private LocalDate dateEcheance;
 
     @Column(name = "montant_verse")
     private Double montantVerse = 0.0;
+
+    @Column(name = "montant_avance_utilise")
+    private Double montantAvanceUtilise = 0.0;
 
     @Column(name = "montant_restant")
     private Double montantRestant = 0.0;
@@ -89,7 +105,6 @@ public class Vente {
     @Column(name = "credit_regle")
     private Boolean creditRegle = false;
 
-    // NOUVEAUX CHAMPS POUR L'ANNULATION (SOFT DELETE)
     @Column(name = "annulee")
     private Boolean annulee = false;
 
@@ -148,22 +163,21 @@ public class Vente {
     }
 
     public void calculerTotal() {
-        // Initialiser les totaux
         Double sousTotalLignes = 0.0;
         Double totalRemisesLignes = 0.0;
+        Double totalBeneficeLignes = 0.0;
 
         if (lignes != null && !lignes.isEmpty()) {
             for (LigneVente ligne : lignes) {
-                // S'assurer que le sous-total est calculé
-                if (ligne.getSousTotal() == null) {
+                if (ligne.getSousTotal() == null || ligne.getBenefice() == null) {
                     ligne.calculerSousTotal();
                 }
                 sousTotalLignes += ligne.getSousTotal();
                 totalRemisesLignes += ligne.getMontantRemise();
+                totalBeneficeLignes += ligne.getBenefice() != null ? ligne.getBenefice() : 0.0;
             }
         }
 
-        // Calculer la remise globale
         Double montantApresRemiseGlobale = sousTotalLignes;
         Double reductionGlobale = 0.0;
 
@@ -180,12 +194,11 @@ public class Vente {
             }
         }
 
-        // Calculer les totaux finaux
         montantRemiseTotal = totalRemisesLignes + reductionGlobale;
         montantApresRemise = montantApresRemiseGlobale;
         montantTotal = montantApresRemise;
+        beneficeTotal = totalBeneficeLignes - reductionGlobale;
 
-        // Arrondir les valeurs
         montantTotal = BigDecimal.valueOf(montantTotal)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
@@ -195,8 +208,10 @@ public class Vente {
         montantApresRemise = BigDecimal.valueOf(montantApresRemise)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
+        beneficeTotal = BigDecimal.valueOf(beneficeTotal)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
 
-        // Mettre à jour le montant restant pour les crédits
         if (Boolean.TRUE.equals(estCredit)) {
             montantRestant = montantApresRemise - montantVerse;
             if (montantRestant <= 0) {
@@ -206,7 +221,6 @@ public class Vente {
         }
     }
 
-    // Méthodes pour appliquer une remise globale
     public void appliquerRemiseGlobalePourcentage(Double pourcentage) {
         if (pourcentage != null && pourcentage >= 0 && pourcentage <= 100) {
             this.remiseGlobale = pourcentage;
@@ -223,7 +237,6 @@ public class Vente {
         }
     }
 
-    // Méthode pour enregistrer un règlement
     public void enregistrerReglement(Double montant, LocalDate dateReglement) {
         if (Boolean.TRUE.equals(estCredit) && !Boolean.TRUE.equals(creditRegle)) {
             if (montant == null || montant <= 0) {
@@ -242,9 +255,13 @@ public class Vente {
         }
     }
 
-    // Méthode utilitaire pour obtenir l'ID du vendeur
     @Transient
     public Long getVendeurId() {
         return vendeur != null ? vendeur.getId() : null;
+    }
+
+    @Transient
+    public Long getClientId() {
+        return client != null ? client.getId() : null;
     }
 }

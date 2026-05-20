@@ -53,6 +53,7 @@ public class ProduitServiceImpl implements ProduitService {
         produit.setUniteMesure(request.getUniteMesure());
         produit.setBio(request.isBio());
         produit.setOrigine(request.getOrigine());
+        produit.setTypeVente(request.getTypeVente() != null ? request.getTypeVente() : "DETAIL");
 
         if (request.getFournisseurId() != null) {
             Fournisseur fournisseur = fournisseurRepository.findById(request.getFournisseurId())
@@ -154,6 +155,10 @@ public class ProduitServiceImpl implements ProduitService {
             produit.setOrigine(request.getOrigine());
         }
 
+        if (request.getTypeVente() != null) {
+            produit.setTypeVente(request.getTypeVente());
+        }
+
         return produitRepository.save(produit);
     }
 
@@ -162,6 +167,9 @@ public class ProduitServiceImpl implements ProduitService {
     public void supprimerProduit(Long id) {
         Produit produit = produitRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé avec l'ID: " + id));
+        if (produitRepository.countLignesVenteByProduitId(id) > 0) {
+            throw new IllegalStateException("Impossible de supprimer un produit deja utilise dans des ventes");
+        }
         produitRepository.delete(produit);
     }
 
@@ -364,9 +372,10 @@ public class ProduitServiceImpl implements ProduitService {
         Fournisseur fournisseur = fournisseurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur non trouvé avec l'ID: " + id));
 
-        if (!fournisseur.getProduits().isEmpty()) {
+        long nombreProduits = produitRepository.countByFournisseurId(id);
+        if (nombreProduits > 0) {
             throw new RuntimeException("Impossible de supprimer le fournisseur car il a " +
-                    fournisseur.getProduits().size() + " produit(s) associé(s)");
+                    nombreProduits + " produit(s) associé(s)");
         }
 
         fournisseurRepository.delete(fournisseur);
@@ -400,6 +409,13 @@ public class ProduitServiceImpl implements ProduitService {
     public Fournisseur obtenirFournisseurParCode(String code) {
         return fournisseurRepository.findByCode(code)
                 .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur non trouvé avec le code: " + code));
+    }
+
+    // NOUVELLE METHODE AJOUTEE
+    @Override
+    @Transactional(readOnly = true)
+    public int compterProduitsParFournisseur(Long fournisseurId) {
+        return (int) produitRepository.countByFournisseurId(fournisseurId);
     }
 
     @Override
@@ -455,6 +471,7 @@ public class ProduitServiceImpl implements ProduitService {
         dto.setUniteMesure(produit.getUniteMesure());
         dto.setBio(produit.isBio());
         dto.setOrigine(produit.getOrigine());
+        dto.setTypeVente(produit.getTypeVente());
 
         dto.setStockFaible(produit.estStockFaible());
         dto.setPerime(produit.estPerime());
@@ -494,7 +511,10 @@ public class ProduitServiceImpl implements ProduitService {
         dto.setDelaiLivraison(fournisseur.getDelaiLivraison());
         dto.setNote(fournisseur.getNote());
         dto.setActif(fournisseur.isActif());
-        dto.setNombreProduits((long) fournisseur.getProduits().size());
+
+        // CORRECTION: Utiliser la méthode de comptage au lieu de la collection lazy
+        int nombreProduits = compterProduitsParFournisseur(fournisseur.getId());
+        dto.setNombreProduits((long) nombreProduits);
 
         return dto;
     }

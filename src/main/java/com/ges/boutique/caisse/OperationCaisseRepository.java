@@ -19,10 +19,12 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     @Query("SELECT o FROM OperationCaisse o WHERE o.dateOperation BETWEEN :debut AND :fin ORDER BY o.dateOperation DESC")
     List<OperationCaisse> findOperationsParPeriode(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT o FROM OperationCaisse o WHERE o.estReglee = false AND o.type = :type")
+    // MODIFIÉ: Exclure les crédits dont la vente est annulée
+    @Query("SELECT o FROM OperationCaisse o WHERE o.estReglee = false AND o.type = :type AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL)")
     List<OperationCaisse> findCreditsNonRegles(@Param("type") TypeOperationCaisse type);
 
-    @Query("SELECT o FROM OperationCaisse o WHERE o.dateEcheance < :date AND o.estReglee = false")
+    // MODIFIÉ: Exclure les crédits dont la vente est annulée
+    @Query("SELECT o FROM OperationCaisse o WHERE o.dateEcheance < :date AND o.estReglee = false AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL)")
     List<OperationCaisse> findCreditsEnRetard(@Param("date") LocalDateTime date);
 
     @Query("SELECT SUM(o.montant) FROM OperationCaisse o WHERE o.type = :type AND o.dateOperation BETWEEN :debut AND :fin")
@@ -32,6 +34,9 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
 
     @Query("SELECT o FROM OperationCaisse o WHERE o.venteCreditId = :venteId ORDER BY o.dateOperation DESC")
     List<OperationCaisse> findReglementsByVenteCredit(@Param("venteId") Long venteId);
+
+    @Query("SELECT COUNT(o) FROM OperationCaisse o WHERE o.caisse.id = :caisseId AND DATE(o.dateOperation) = CURRENT_DATE")
+    Long countOperationsDuJourByCaisseId(@Param("caisseId") Long caisseId);
 
     @Query("SELECT SUM(o.montant) FROM OperationCaisse o WHERE o.venteCreditId = :venteId AND o.type = :type")
     Double getTotalReglementsByVenteCredit(@Param("venteId") Long venteId,
@@ -43,4 +48,9 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     @Query("SELECT o FROM OperationCaisse o WHERE o.vente.id = :venteId AND o.type = :type")
     Optional<OperationCaisse> findFirstByVenteIdAndType(@Param("venteId") Long venteId,
                                                         @Param("type") TypeOperationCaisse type);
+
+    // Nouvelle méthode pour trouver l'opération de vente comptant d'une vente
+    @Query("SELECT o FROM OperationCaisse o WHERE o.vente.id = :venteId AND o.type = :type")
+    Optional<OperationCaisse> findOperationVenteByVenteIdAndType(@Param("venteId") Long venteId,
+                                                                 @Param("type") TypeOperationCaisse type);
 }

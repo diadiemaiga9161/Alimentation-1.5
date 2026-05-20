@@ -23,22 +23,6 @@
     }
 }
 
-@media (max-width: 991.98px) {
-    .main-content-wrap {
-        padding: 1.25rem 1rem 0;
-
-        &.sidenav-open {
-            width: 100%;
-        }
-    }
-}
-
-@media (max-width: 575.98px) {
-    .main-content-wrap {
-        padding: 1rem 0.75rem 0;
-    }
-}
-
 
 [dir="rtl"] {
     .notification-dropdown .dropdown-item .notification-details {

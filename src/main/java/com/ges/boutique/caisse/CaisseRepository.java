@@ -27,4 +27,8 @@ public interface CaisseRepository extends JpaRepository<Caisse, Long> {
 
     @Query("SELECT c FROM Caisse c WHERE c.verifiee = false AND c.estOuverte = false")
     List<Caisse> findCaissesNonVerifiees();
+
+    boolean existsByNumeroCaisse(String numeroCaisse);
+
+    Optional<Caisse> findByNumeroCaisse(String numeroCaisse);
 }

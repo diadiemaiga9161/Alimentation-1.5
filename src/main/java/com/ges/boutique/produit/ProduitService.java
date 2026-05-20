@@ -34,6 +34,7 @@ public interface ProduitService {
     List<Fournisseur> rechercherFournisseurs(String motCle);
     List<Fournisseur> obtenirFournisseursActifs();
     Fournisseur obtenirFournisseurParCode(String code);
+    int compterProduitsParFournisseur(Long fournisseurId);
 
     ImportResult importerProduits(MultipartFile file) throws IOException;
     byte[] genererTemplateExcel() throws IOException;

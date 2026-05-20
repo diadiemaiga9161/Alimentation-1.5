@@ -1,9 +1,11 @@
 package com.ges.boutique.vente;
 
+import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.utilisateur.UtilisateurMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,9 +13,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/ventes")
 @RequiredArgsConstructor
@@ -23,39 +27,56 @@ public class VenteController {
     private final VenteService venteService;
     private final VenteMapper venteMapper;
     private final UtilisateurMapper utilisateurMapper;
+    private final CaisseService caisseService;
 
-    // ==================== ENDPOINTS EXISTANTS ====================
+    // ==================== CRÉATION ====================
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Créer une nouvelle vente (comptant ou crédit)")
+    @Operation(summary = "Créer une vente (comptant)")
     public ResponseEntity<Map<String, Object>> creerVente(@RequestBody VenteRequest request) {
-        Vente vente;
-        if (request.isEstCredit()) {
-            VenteCreditRequest creditRequest = new VenteCreditRequest();
-            creditRequest.setVendeurId(request.getVendeurId());
-            creditRequest.setLignes(request.getLignes());
-            creditRequest.setModePaiement(request.getModePaiement());
-            creditRequest.setReferencePaiement(request.getReferencePaiement());
-            creditRequest.setRemiseGlobale(request.getRemiseGlobale());
-            creditRequest.setTypeRemiseGlobale(request.getTypeRemiseGlobale());
-            creditRequest.setClientNom(request.getClientNom());
-            creditRequest.setClientTelephone(request.getClientTelephone());
-            creditRequest.setDateEcheance(request.getDateEcheance());
-            creditRequest.setMontantVerse(request.getMontantVerse() != null ? request.getMontantVerse() : 0.0);
-            vente = venteService.creerVenteCredit(creditRequest);
-        } else {
-            vente = venteService.creerVente(request);
-        }
-        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
+        Vente vente = venteService.creerVente(request);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Vente créée avec succès");
+        response.put("vente", venteMapper.toVenteMap(vente));
+        return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/credit")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Créer une vente à crédit")
+    public ResponseEntity<Map<String, Object>> creerVenteCredit(@RequestBody VenteCreditRequest request) {
+        Vente vente = venteService.creerVenteCredit(request);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Crédit créé avec succès");
+        response.put("vente", venteMapper.toVenteMap(vente));
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== LECTURE ====================
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir une vente par ID")
     public ResponseEntity<Map<String, Object>> obtenirVenteParId(@PathVariable Long id) {
         Vente vente = venteService.obtenirVenteParId(id);
-        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("vente", venteMapper.toVenteMap(vente));
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/credit/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir un crédit par ID")
+    public ResponseEntity<Map<String, Object>> obtenirVenteCreditParId(@PathVariable Long id) {
+        Vente vente = venteService.obtenirVenteCreditParId(id);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("vente", venteMapper.toVenteMap(vente));
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
@@ -64,268 +85,6 @@ public class VenteController {
     public ResponseEntity<List<Map<String, Object>>> obtenirToutesVentes() {
         List<Vente> ventes = venteService.obtenirToutesVentes();
         return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
-    }
-
-    @GetMapping("/dto")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir toutes les ventes en format DTO")
-    public ResponseEntity<List<VenteDto>> obtenirToutesVentesDto() {
-        List<Vente> ventes = venteService.obtenirToutesVentes();
-        List<VenteDto> dtos = ventes.stream()
-                .map(venteMapper::toVenteDto)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(dtos);
-    }
-
-    @GetMapping("/aujourdhui")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les ventes du jour")
-    public ResponseEntity<Map<String, Object>> obtenirVentesDuJour() {
-        List<Vente> ventes = venteService.obtenirVentesDuJour();
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("ventes", venteMapper.toVenteMapList(ventes));
-        response.put("totalVentes", ventes.size());
-        response.put("montantTotal", ventes.stream()
-                .mapToDouble(Vente::getMontantTotal)
-                .sum());
-        response.put("montantTotalComptant", ventes.stream()
-                .filter(v -> !Boolean.TRUE.equals(v.getEstCredit()))
-                .mapToDouble(Vente::getMontantTotal)
-                .sum());
-        response.put("montantTotalCredit", ventes.stream()
-                .filter(v -> Boolean.TRUE.equals(v.getEstCredit()))
-                .mapToDouble(Vente::getMontantTotal)
-                .sum());
-
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/comptant")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir toutes les ventes comptant")
-    public ResponseEntity<List<Map<String, Object>>> obtenirVentesComptant() {
-        List<Vente> ventes = venteService.obtenirToutesVentes().stream()
-                .filter(v -> !Boolean.TRUE.equals(v.getEstCredit()))
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
-    }
-
-    @GetMapping("/periode")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les ventes par période")
-    public ResponseEntity<List<Map<String, Object>>> obtenirVentesParDateRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        List<Vente> ventes = venteService.obtenirVentesParDateRange(dateDebut, dateFin);
-        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
-    }
-
-    // ==================== ENDPOINTS STATISTIQUES ====================
-
-    @GetMapping("/statistiques/chiffre-affaire")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les statistiques de chiffre d'affaires")
-    public ResponseEntity<Map<String, Object>> obtenirStatistiquesChiffreAffaire() {
-        return ResponseEntity.ok(venteService.obtenirStatistiquesChiffreAffaire());
-    }
-
-    @GetMapping("/statistiques/journalieres/{date}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les statistiques journalières")
-    public ResponseEntity<Map<String, Object>> obtenirStatistiquesJournalieres(
-            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(venteService.obtenirStatistiquesJournalieres(date));
-    }
-
-    @GetMapping("/statistiques/hebdomadaires")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les statistiques hebdomadaires")
-    public ResponseEntity<Map<String, Object>> obtenirStatistiquesHebdomadaires() {
-        return ResponseEntity.ok(venteService.obtenirStatistiquesHebdomadaires());
-    }
-
-    @GetMapping("/statistiques/mensuelles")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir les statistiques mensuelles")
-    public ResponseEntity<Map<String, Object>> obtenirStatistiquesMensuelles() {
-        return ResponseEntity.ok(venteService.obtenirStatistiquesMensuelles());
-    }
-
-    // ==================== ENDPOINTS REMISES ====================
-
-    @PostMapping("/{venteId}/remise-globale")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Appliquer une remise globale sur une vente")
-    public ResponseEntity<Map<String, Object>> appliquerRemiseGlobale(
-            @PathVariable Long venteId,
-            @RequestParam Double remise,
-            @RequestParam RemiseType type) {
-        Vente vente = venteService.appliquerRemiseGlobale(venteId, remise, type);
-        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
-    }
-
-    @PostMapping("/lignes/{ligneId}/remise")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Appliquer une remise sur une ligne de vente")
-    public ResponseEntity<Map<String, Object>> appliquerRemiseLigne(
-            @PathVariable Long ligneId,
-            @RequestParam Double remise,
-            @RequestParam RemiseType type) {
-        LigneVente ligne = venteService.appliquerRemiseLigne(ligneId, remise, type);
-        return ResponseEntity.ok(venteMapper.toLigneMap(ligne));
-    }
-
-    @GetMapping("/avec-remise")
-    @PreAuthorize("hasRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les ventes avec remise")
-    public ResponseEntity<List<Map<String, Object>>> obtenirVentesAvecRemise() {
-        List<Vente> ventes = venteService.obtenirVentesAvecRemise();
-        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
-    }
-
-    @GetMapping("/remises/total")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Obtenir le total des remises sur une période")
-    public ResponseEntity<Double> obtenirTotalRemisesParPeriode(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        Double total = venteService.obtenirTotalRemisesParPeriode(dateDebut, dateFin);
-        return ResponseEntity.ok(total);
-    }
-
-    @DeleteMapping("/{venteId}/remise-globale")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Annuler la remise globale d'une vente")
-    public ResponseEntity<Map<String, Object>> annulerRemiseGlobale(@PathVariable Long venteId) {
-        Vente vente = venteService.annulerRemiseGlobale(venteId);
-        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
-    }
-
-    @DeleteMapping("/lignes/{ligneId}/remise")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Annuler la remise d'une ligne de vente")
-    public ResponseEntity<Map<String, Object>> annulerRemiseLigne(@PathVariable Long ligneId) {
-        LigneVente ligne = venteService.annulerRemiseLigne(ligneId);
-        return ResponseEntity.ok(venteMapper.toLigneMap(ligne));
-    }
-
-    // ==================== ENDPOINTS PRATIQUES ====================
-
-    @GetMapping("/resume")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir un résumé des ventes")
-    public ResponseEntity<List<Map<String, Object>>> obtenirResumeVentes() {
-        List<Vente> ventes = venteService.obtenirToutesVentes();
-        List<Map<String, Object>> resume = ventes.stream()
-                .map(v -> {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", v.getId());
-                    map.put("numeroVente", v.getNumeroVente());
-                    map.put("dateVente", v.getDateVente());
-                    map.put("vendeurId", v.getVendeurId());
-                    map.put("vendeurNom", v.getVendeur() != null ? v.getVendeur().getNomComplet() : "Inconnu");
-                    map.put("montantTotal", v.getMontantTotal());
-                    map.put("modePaiement", v.getModePaiement().toString());
-                    map.put("nombreProduits", v.getLignes() != null ? v.getLignes().size() : 0);
-                    map.put("estCredit", v.getEstCredit());
-                    map.put("clientNom", v.getClientNom());
-                    map.put("creditRegle", v.getCreditRegle());
-                    return map;
-                })
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(resume);
-    }
-
-    @GetMapping("/vendeur/{vendeurId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les ventes par vendeur")
-    public ResponseEntity<List<Map<String, Object>>> obtenirVentesParVendeur(@PathVariable Long vendeurId) {
-        List<Vente> ventes = venteService.obtenirVentesParVendeur(vendeurId);
-        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
-    }
-
-    @GetMapping("/produit/{produitId}")
-    @PreAuthorize("hasRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les ventes par produit")
-    public ResponseEntity<List<Map<String, Object>>> obtenirVentesParProduit(@PathVariable Long produitId) {
-        List<Vente> toutesVentes = venteService.obtenirToutesVentes();
-        List<Map<String, Object>> ventesProduit = toutesVentes.stream()
-                .filter(v -> v.getLignes() != null &&
-                        v.getLignes().stream().anyMatch(l -> l.getProduitId().equals(produitId)))
-                .map(venteMapper::toVenteMap)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(ventesProduit);
-    }
-
-    @GetMapping("/{id}/vendeur")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les informations du vendeur d'une vente")
-    public ResponseEntity<VendeurDto> obtenirVendeurDeVente(@PathVariable Long id) {
-        Vente vente = venteService.obtenirVenteParId(id);
-        if (vente.getVendeur() == null) {
-            return ResponseEntity.notFound().build();
-        }
-        VendeurDto vendeurDto = utilisateurMapper.toVendeurDto(vente.getVendeur());
-        return ResponseEntity.ok(vendeurDto);
-    }
-
-    // ==================== ENDPOINTS CRUD ====================
-
-    @PutMapping("/{venteId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Modifier une vente existante")
-    public ResponseEntity<Map<String, Object>> modifierVente(
-            @PathVariable Long venteId,
-            @RequestBody VenteRequest request) {
-        Vente venteModifiee;
-        if (request.isEstCredit()) {
-            VenteCreditRequest creditRequest = new VenteCreditRequest();
-            creditRequest.setVendeurId(request.getVendeurId());
-            creditRequest.setLignes(request.getLignes());
-            creditRequest.setModePaiement(request.getModePaiement());
-            creditRequest.setReferencePaiement(request.getReferencePaiement());
-            creditRequest.setRemiseGlobale(request.getRemiseGlobale());
-            creditRequest.setTypeRemiseGlobale(request.getTypeRemiseGlobale());
-            creditRequest.setClientNom(request.getClientNom());
-            creditRequest.setClientTelephone(request.getClientTelephone());
-            creditRequest.setDateEcheance(request.getDateEcheance());
-            creditRequest.setMontantVerse(request.getMontantVerse());
-            venteModifiee = venteService.modifierVenteCredit(venteId, creditRequest);
-        } else {
-            venteModifiee = venteService.modifierVente(venteId, request);
-        }
-        return ResponseEntity.ok(venteMapper.toVenteMap(venteModifiee));
-    }
-
-    @DeleteMapping("/{venteId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Supprimer une vente")
-    public ResponseEntity<Map<String, Object>> supprimerVente(@PathVariable Long venteId) {
-        Vente vente = venteService.obtenirVenteParId(venteId);
-
-        if (Boolean.TRUE.equals(vente.getEstCredit())) {
-            venteService.supprimerVenteCredit(venteId);
-        } else {
-            venteService.supprimerVente(venteId);
-        }
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Vente supprimée avec succès");
-        response.put("venteId", venteId);
-
-        return ResponseEntity.ok(response);
-    }
-
-    // ==================== ENDPOINTS SPÉCIFIQUES AUX CRÉDITS ====================
-
-    @PostMapping("/credit")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Créer une nouvelle vente à crédit")
-    public ResponseEntity<Map<String, Object>> creerVenteCredit(@RequestBody VenteCreditRequest request) {
-        Vente vente = venteService.creerVenteCredit(request);
-        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
     }
 
     @GetMapping("/credits")
@@ -341,82 +100,123 @@ public class VenteController {
     @Operation(summary = "Obtenir les crédits non réglés")
     public ResponseEntity<Map<String, Object>> obtenirCreditsNonRegles() {
         List<Vente> credits = venteService.obtenirCreditsNonRegles();
-
         Map<String, Object> response = new HashMap<>();
         response.put("credits", venteMapper.toVenteMapList(credits));
         response.put("nombreCredits", credits.size());
-        response.put("montantTotal", credits.stream()
-                .mapToDouble(Vente::getMontantRestant)
-                .sum());
-
+        response.put("montantTotal", credits.stream().mapToDouble(Vente::getMontantRestant).sum());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/credits/en-retard")
-    @PreAuthorize("hasRole('ADMIN', 'VENDEUR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les crédits en retard")
     public ResponseEntity<Map<String, Object>> obtenirCreditsEnRetard() {
         List<Vente> credits = venteService.obtenirCreditsEnRetard();
-
         Map<String, Object> response = new HashMap<>();
         response.put("credits", venteMapper.toVenteMapList(credits));
         response.put("nombreCredits", credits.size());
-        response.put("montantTotal", credits.stream()
-                .mapToDouble(Vente::getMontantRestant)
-                .sum());
-
+        response.put("montantTotal", credits.stream().mapToDouble(Vente::getMontantRestant).sum());
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/credits/client/{clientNom}")
+    @GetMapping("/credits/client")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les crédits par client")
-    public ResponseEntity<List<Map<String, Object>>> obtenirCreditsParClient(@PathVariable String clientNom) {
+    public ResponseEntity<List<Map<String, Object>>> obtenirCreditsParClient(@RequestParam String clientNom) {
         List<Vente> credits = venteService.obtenirCreditsParClient(clientNom);
         return ResponseEntity.ok(venteMapper.toVenteMapList(credits));
     }
 
-    @GetMapping("/credits/regles")
-    @PreAuthorize("hasRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les crédits réglés par période")
-    public ResponseEntity<List<Map<String, Object>>> obtenirCreditsReglesParPeriode(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
-        List<Vente> credits = venteService.obtenirCreditsReglesParPeriode(dateDebut, dateFin);
-        return ResponseEntity.ok(venteMapper.toVenteMapList(credits));
+    @GetMapping("/vendeur/{vendeurId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes par vendeur")
+    public ResponseEntity<List<Map<String, Object>>> obtenirVentesParVendeur(@PathVariable Long vendeurId) {
+        List<Vente> ventes = venteService.obtenirVentesParVendeur(vendeurId);
+        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
     }
 
-    @GetMapping("/credits/{id}")
+    @GetMapping("/periode")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir un crédit par ID")
-    public ResponseEntity<Map<String, Object>> obtenirCreditParId(@PathVariable Long id) {
-        Vente credit = venteService.obtenirVenteCreditParId(id);
-        return ResponseEntity.ok(venteMapper.toVenteMap(credit));
+    @Operation(summary = "Obtenir les ventes par période")
+    public ResponseEntity<List<Map<String, Object>>> obtenirVentesParDateRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin) {
+        List<Vente> ventes = venteService.obtenirVentesParDateRange(dateDebut, dateFin);
+        return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
+    }
+
+    @GetMapping("/aujourdhui")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les ventes du jour")
+    public ResponseEntity<Map<String, Object>> obtenirVentesDuJour() {
+        List<Vente> ventes = venteService.obtenirVentesDuJour();
+        Map<String, Object> response = new HashMap<>();
+        response.put("ventes", venteMapper.toVenteMapList(ventes));
+        response.put("nombreVentes", ventes.size());
+        response.put("montantTotal", ventes.stream().mapToDouble(Vente::getMontantTotal).sum());
+        response.put("beneficeTotal", ventes.stream().mapToDouble(Vente::getBeneficeTotal).sum());
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== MODIFICATION ====================
+
+    @PutMapping("/{venteId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Modifier une vente")
+    public ResponseEntity<Map<String, Object>> modifierVente(@PathVariable Long venteId, @RequestBody VenteRequest request) {
+        Vente vente = venteService.modifierVente(venteId, request);
+        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
     }
 
     @PutMapping("/credits/{venteId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Modifier un crédit")
-    public ResponseEntity<Map<String, Object>> modifierVenteCredit(
-            @PathVariable Long venteId,
-            @RequestBody VenteCreditRequest request) {
-        Vente creditModifie = venteService.modifierVenteCredit(venteId, request);
-        return ResponseEntity.ok(venteMapper.toVenteMap(creditModifie));
+    public ResponseEntity<Map<String, Object>> modifierVenteCredit(@PathVariable Long venteId, @RequestBody VenteCreditRequest request) {
+        Vente vente = venteService.modifierVenteCredit(venteId, request);
+        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
     }
 
-    @DeleteMapping("/credits/{venteId}")
+    // ==================== REMISES ====================
+
+    @PostMapping("/{venteId}/remise-globale")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Supprimer un crédit")
-    public ResponseEntity<Map<String, Object>> supprimerVenteCredit(@PathVariable Long venteId) {
-        venteService.supprimerVenteCredit(venteId);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Crédit supprimé avec succès");
-        response.put("venteId", venteId);
-
-        return ResponseEntity.ok(response);
+    @Operation(summary = "Appliquer une remise globale")
+    public ResponseEntity<Map<String, Object>> appliquerRemiseGlobale(
+            @PathVariable Long venteId,
+            @RequestParam Double remise,
+            @RequestParam RemiseType type) {
+        Vente vente = venteService.appliquerRemiseGlobale(venteId, remise, type);
+        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
     }
+
+    @DeleteMapping("/{venteId}/remise-globale")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Annuler la remise globale")
+    public ResponseEntity<Map<String, Object>> annulerRemiseGlobale(@PathVariable Long venteId) {
+        Vente vente = venteService.annulerRemiseGlobale(venteId);
+        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
+    }
+
+    @PostMapping("/lignes/{ligneId}/remise")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Appliquer une remise sur une ligne")
+    public ResponseEntity<Map<String, Object>> appliquerRemiseLigne(
+            @PathVariable Long ligneId,
+            @RequestParam Double remise,
+            @RequestParam RemiseType type) {
+        LigneVente ligne = venteService.appliquerRemiseLigne(ligneId, remise, type);
+        return ResponseEntity.ok(venteMapper.toLigneMap(ligne));
+    }
+
+    @DeleteMapping("/lignes/{ligneId}/remise")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Annuler la remise sur une ligne")
+    public ResponseEntity<Map<String, Object>> annulerRemiseLigne(@PathVariable Long ligneId) {
+        LigneVente ligne = venteService.annulerRemiseLigne(ligneId);
+        return ResponseEntity.ok(venteMapper.toLigneMap(ligne));
+    }
+
+    // ==================== RÈGLEMENTS CRÉDIT ====================
 
     @PostMapping("/credits/{venteId}/reglement")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -424,58 +224,259 @@ public class VenteController {
     public ResponseEntity<Map<String, Object>> enregistrerReglementCredit(
             @PathVariable Long venteId,
             @RequestBody ReglementCreditRequest request) {
-
         request.setVenteId(venteId);
         Vente vente = venteService.enregistrerReglementCredit(venteId, request);
+        return ResponseEntity.ok(venteMapper.toVenteMap(vente));
+    }
 
+    // ==================== SUPPRESSION ET ANNULATION ====================
+
+    @DeleteMapping("/{venteId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Supprimer définitivement une vente")
+    public ResponseEntity<Map<String, Object>> supprimerVente(@PathVariable Long venteId) {
+        venteService.supprimerVente(venteId);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", "Règlement enregistré avec succès");
-        response.put("vente", venteMapper.toVenteMap(vente));
-
+        response.put("message", "Vente supprimée avec succès");
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/credits/statistiques")
-    @PreAuthorize("hasRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les statistiques des crédits")
-    public ResponseEntity<Map<String, Object>> getStatistiquesCredits() {
-        return ResponseEntity.ok(venteService.getStatistiquesCredits());
-    }
-
-    @GetMapping("/credits/reglements/aujourdhui")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Obtenir les règlements du jour")
-    public ResponseEntity<Map<String, Object>> getReglementsDuJour() {
-        List<Vente> reglements = venteService.obtenirCreditsReglesParPeriode(
-                LocalDate.now(), LocalDate.now());
-
+    @DeleteMapping("/credits/{venteId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Supprimer définitivement un crédit")
+    public ResponseEntity<Map<String, Object>> supprimerVenteCredit(@PathVariable Long venteId) {
+        venteService.supprimerVenteCredit(venteId);
         Map<String, Object> response = new HashMap<>();
-        response.put("reglements", venteMapper.toVenteMapList(reglements));
-        response.put("nombreReglements", reglements.size());
-        response.put("montantTotal", reglements.stream()
-                .mapToDouble(Vente::getMontantVerse)
-                .sum());
-
+        response.put("success", true);
+        response.put("message", "Crédit supprimé avec succès");
         return ResponseEntity.ok(response);
     }
 
-
-    @DeleteMapping("/{venteId}/annuler")
+    /**
+     * Annuler une vente (comptant)
+     * @param venteId ID de la vente
+     * @param utilisateurId ID de l'utilisateur qui annule
+     * @param motif Motif de l'annulation
+     * @param repercuterCaisse Si true, répercute l'annulation sur la caisse (retire le montant)
+     */
+    @PostMapping("/{venteId}/annuler")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    @Operation(summary = "Annuler une vente")
+    @Operation(summary = "Annuler une vente avec répercussion optionnelle sur la caisse")
     public ResponseEntity<Map<String, Object>> annulerVente(
             @PathVariable Long venteId,
             @RequestParam(required = false) Long utilisateurId,
-            @RequestParam(required = false) String motif) {
+            @RequestParam(required = false) String motif,
+            @RequestParam(required = false, defaultValue = "true") boolean repercuterCaisse) {
 
+        log.info("=== ANNULATION VENTE ===");
+        log.info("Vente ID: {}, Utilisateur: {}, Motif: {}, Répercuter en caisse: {}",
+                venteId, utilisateurId, motif, repercuterCaisse);
+
+        Vente vente = venteService.obtenirVenteParId(venteId);
+
+        // Si la vente est déjà annulée, ne rien faire
+        if (Boolean.TRUE.equals(vente.getAnnulee())) {
+            log.warn("La vente {} est déjà annulée", vente.getNumeroVente());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Cette vente est déjà annulée");
+            response.put("vente", venteMapper.toVenteMap(vente));
+            response.put("dejaAnnulee", true);
+            return ResponseEntity.ok(response);
+        }
+
+        // Répercuter l'annulation en caisse si demandé
+        if (repercuterCaisse) {
+            try {
+                log.info("Répercussion de l'annulation en caisse pour la vente {}", vente.getNumeroVente());
+                caisseService.annulerVenteAvecRepercussion(vente, utilisateurId, motif);
+                log.info("✅ Annulation répercutée en caisse avec succès");
+            } catch (Exception e) {
+                log.error("Erreur lors de la répercussion en caisse: {}", e.getMessage());
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("error", "Erreur lors de la répercussion en caisse: " + e.getMessage());
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+        }
+
+        // Annuler la vente dans le service vente
         Vente venteAnnulee = venteService.annulerVente(venteId, utilisateurId, motif);
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Vente annulée avec succès");
         response.put("vente", venteMapper.toVenteMap(venteAnnulee));
-
+        response.put("repercuterCaisse", repercuterCaisse);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Annuler un crédit
+     * @param venteId ID du crédit
+     * @param utilisateurId ID de l'utilisateur qui annule
+     * @param motif Motif de l'annulation
+     * @param repercuterCaisse Si true, répercute l'annulation sur la caisse
+     */
+    @PostMapping("/credits/{venteId}/annuler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Annuler un crédit avec répercussion optionnelle sur la caisse")
+    public ResponseEntity<Map<String, Object>> annulerVenteCredit(
+            @PathVariable Long venteId,
+            @RequestParam(required = false) Long utilisateurId,
+            @RequestParam(required = false) String motif,
+            @RequestParam(required = false, defaultValue = "true") boolean repercuterCaisse) {
+
+        log.info("=== ANNULATION CRÉDIT ===");
+        log.info("Crédit ID: {}, Utilisateur: {}, Motif: {}, Répercuter en caisse: {}",
+                venteId, utilisateurId, motif, repercuterCaisse);
+
+        Vente vente = venteService.obtenirVenteParId(venteId);
+
+        // Vérifier que c'est bien un crédit
+        if (!Boolean.TRUE.equals(vente.getEstCredit())) {
+            log.error("La vente {} n'est pas un crédit", vente.getNumeroVente());
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", "Cette vente n'est pas un crédit");
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+
+        // Si le crédit est déjà annulé, ne rien faire
+        if (Boolean.TRUE.equals(vente.getAnnulee())) {
+            log.warn("Le crédit {} est déjà annulé", vente.getNumeroVente());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Ce crédit est déjà annulé");
+            response.put("vente", venteMapper.toVenteMap(vente));
+            response.put("dejaAnnulee", true);
+            return ResponseEntity.ok(response);
+        }
+
+        // Vérifier si le crédit a déjà été payé partiellement
+        if (vente.getMontantVerse() != null && vente.getMontantVerse() > 0 && repercuterCaisse) {
+            log.warn("Le crédit a déjà été partiellement payé ({} FCFA). L'annulation ne modifie pas le solde de la caisse.",
+                    vente.getMontantVerse());
+        }
+
+        // Répercuter l'annulation en caisse si demandé
+        if (repercuterCaisse) {
+            try {
+                log.info("Répercussion de l'annulation en caisse pour le crédit {}", vente.getNumeroVente());
+                caisseService.annulerVenteCreditAvecRepercussion(vente, utilisateurId, motif);
+                log.info("✅ Annulation du crédit répercutée en caisse avec succès");
+            } catch (Exception e) {
+                log.error("Erreur lors de la répercussion en caisse: {}", e.getMessage());
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("error", "Erreur lors de la répercussion en caisse: " + e.getMessage());
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+        }
+
+        // Annuler le crédit dans le service vente
+        Vente venteAnnulee = venteService.annulerVenteCredit(venteId, utilisateurId, motif);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Crédit annulé avec succès");
+        response.put("vente", venteMapper.toVenteMap(venteAnnulee));
+        response.put("repercuterCaisse", repercuterCaisse);
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== STATISTIQUES ====================
+
+    @GetMapping("/statistiques/chiffre-affaire")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Statistiques chiffre d'affaires")
+    public ResponseEntity<Map<String, Object>> obtenirStatistiquesChiffreAffaire() {
+        return ResponseEntity.ok(venteService.obtenirStatistiquesChiffreAffaire());
+    }
+
+    @GetMapping("/statistiques/journalieres")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Statistiques journalières")
+    public ResponseEntity<Map<String, Object>> obtenirStatistiquesJournalieres(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(venteService.obtenirStatistiquesJournalieres(date));
+    }
+
+    @GetMapping("/statistiques/hebdomadaires")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Statistiques hebdomadaires")
+    public ResponseEntity<Map<String, Object>> obtenirStatistiquesHebdomadaires() {
+        return ResponseEntity.ok(venteService.obtenirStatistiquesHebdomadaires());
+    }
+
+    @GetMapping("/statistiques/mensuelles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Statistiques mensuelles")
+    public ResponseEntity<Map<String, Object>> obtenirStatistiquesMensuelles() {
+        return ResponseEntity.ok(venteService.obtenirStatistiquesMensuelles());
+    }
+
+    @GetMapping("/statistiques/credits")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Statistiques des crédits")
+    public ResponseEntity<Map<String, Object>> getStatistiquesCredits() {
+        return ResponseEntity.ok(venteService.getStatistiquesCredits());
+    }
+
+    @GetMapping("/statistiques/nombre-periodes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Compter les ventes sur une période")
+    public ResponseEntity<Map<String, Object>> compterVentesParDateRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime debut,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fin) {
+        Long count = venteService.compterVentesParDateRange(debut, fin);
+        Map<String, Object> response = new HashMap<>();
+        response.put("debut", debut);
+        response.put("fin", fin);
+        response.put("nombreVentes", count);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/statistiques/vendeur/{vendeurId}/ca")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Chiffre d'affaires par vendeur")
+    public ResponseEntity<Map<String, Object>> obtenirChiffreAffaireVendeur(@PathVariable Long vendeurId) {
+        Double ca = venteService.obtenirChiffreAffaireVendeur(vendeurId);
+        Map<String, Object> response = new HashMap<>();
+        response.put("vendeurId", vendeurId);
+        response.put("chiffreAffaire", ca);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/statistiques/top-clients")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Top clients")
+    public ResponseEntity<List<Map<String, Object>>> obtenirTopClients() {
+        return ResponseEntity.ok(venteService.obtenirTopClients());
+    }
+
+    @GetMapping("/statistiques/top-produits/quantite")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Top produits par quantité")
+    public ResponseEntity<List<Map<String, Object>>> obtenirTopProduitsParQuantite() {
+        return ResponseEntity.ok(venteService.obtenirTopProduitsParQuantite());
+    }
+
+    @GetMapping("/statistiques/top-produits/ca")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Top produits par chiffre d'affaires")
+    public ResponseEntity<List<Map<String, Object>>> obtenirTopProduitsParChiffreAffaire() {
+        return ResponseEntity.ok(venteService.obtenirTopProduitsParChiffreAffaire());
+    }
+
+    @GetMapping("/statistiques/top-produits")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Top produits (les deux classements)")
+    public ResponseEntity<Map<String, Object>> obtenirTopProduits() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("parQuantite", venteService.obtenirTopProduitsParQuantite());
+        result.put("parChiffreAffaire", venteService.obtenirTopProduitsParChiffreAffaire());
+        return ResponseEntity.ok(result);
     }
 }

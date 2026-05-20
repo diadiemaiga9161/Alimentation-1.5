@@ -25,6 +25,7 @@ public class ProduitDto {
     private String uniteMesure;
     private boolean bio;
     private String origine;
+    private String typeVente;
     private boolean stockFaible;
     private boolean perime;
     private boolean prochePeremption;

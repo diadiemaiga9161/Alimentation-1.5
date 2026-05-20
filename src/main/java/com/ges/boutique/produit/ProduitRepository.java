@@ -48,4 +48,10 @@ public interface ProduitRepository extends JpaRepository<Produit, Long> {
 
     @Query("SELECT p FROM Produit p WHERE p.dateCreation >= :dateDebut")
     List<Produit> trouverProduitsRecents(@Param("dateDebut") LocalDate dateDebut);
+
+    @Query("SELECT COUNT(l) FROM LigneVente l WHERE l.produit.id = :produitId")
+    long countLignesVenteByProduitId(@Param("produitId") Long produitId);
+
+    long countByFournisseurId(Long fournisseurId);
+
 }

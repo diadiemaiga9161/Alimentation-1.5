@@ -1,7 +1,6 @@
 package com.ges.boutique.vente;
 
 import lombok.Data;
-
 import java.time.LocalDate;
 import java.util.List;
 
@@ -14,11 +13,20 @@ public class VenteRequest {
     private Double remiseGlobale;
     private RemiseType typeRemiseGlobale;
 
-    // NOUVEAUX CHAMPS POUR LES CRÉDITS
-    private boolean estCredit = false;
+    private Boolean estCredit = false;
+
+    // Client
+    private Long clientId;
+    private Boolean clientDivers = false;
+    private Boolean creerClient = false;
     private String clientNom;
+    private String clientPrenom;
     private String clientTelephone;
+    private String clientEmail;
+    private String clientAdresse;
+
+    // Pour les crédits
     private LocalDate dateEcheance;
     private Double montantVerse;
-    private Long creditId; // Pour modification de crédit
+    private Double montantAvanceUtilise = 0.0;
 }

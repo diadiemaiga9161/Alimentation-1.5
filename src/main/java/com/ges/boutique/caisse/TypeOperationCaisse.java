@@ -13,5 +13,6 @@ public enum TypeOperationCaisse {
     DEPOT,
     RETRAIT,
     ANNULATION_VENTE,
-    ANNULATION_CREDIT
+    ANNULATION_CREDIT,
+    AVANCE_CLIENT
 }

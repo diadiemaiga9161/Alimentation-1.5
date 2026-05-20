@@ -38,6 +38,12 @@ public class LigneVente {
     @Column(name = "prix_unitaire", nullable = false)
     private Double prixUnitaire;
 
+    @Column(name = "prix_original_produit")
+    private Double prixOriginalProduit;  // Sauvegarde du prix original du produit
+
+    @Column(name = "prix_achat", nullable = false)
+    private Double prixAchat = 0.0;
+
     @Column(name = "remise_pourcentage")
     private Double remisePourcentage = 0.0;
 
@@ -50,48 +56,56 @@ public class LigneVente {
     @Column(name = "sous_total", nullable = false)
     private Double sousTotal;
 
+    @Column(name = "benefice", nullable = false)
+    private Double benefice = 0.0;
+
     @PrePersist
     @PreUpdate
     protected void calculerSousTotal() {
-        // Initialiser les valeurs si elles sont null
         if (prixUnitaire == null) prixUnitaire = 0.0;
         if (quantite == null) quantite = 0;
         if (remisePourcentage == null) remisePourcentage = 0.0;
         if (remiseMontant == null) remiseMontant = 0.0;
 
-        // Calculer le prix après remise
+        // Sauvegarder le prix original du produit si non défini
+        if (prixOriginalProduit == null && produit != null) {
+            prixOriginalProduit = produit.getPrixVente();
+        }
+
+        // Récupérer le prix d'achat du produit
+        if (prixAchat == null || prixAchat == 0.0) {
+            prixAchat = produit != null ? produit.getPrixAchat() : 0.0;
+        }
+
         Double prixBase = prixUnitaire;
 
         if (remisePourcentage > 0) {
-            // Remise en pourcentage
             Double reduction = prixBase * (remisePourcentage / 100);
             prixApresRemise = prixBase - reduction;
         } else if (remiseMontant > 0) {
-            // Remise en montant fixe
             prixApresRemise = Math.max(0, prixBase - remiseMontant);
         } else {
-            // Pas de remise
             prixApresRemise = prixBase;
         }
 
-        // Assurer que le prix après remise n'est pas négatif
         if (prixApresRemise < 0) {
             prixApresRemise = 0.0;
         }
 
-        // Calculer le sous-total
         sousTotal = prixApresRemise * quantite;
+        benefice = (prixApresRemise - prixAchat) * quantite;
 
-        // Arrondir à 2 décimales
         sousTotal = BigDecimal.valueOf(sousTotal)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
         prixApresRemise = BigDecimal.valueOf(prixApresRemise)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();
+        benefice = BigDecimal.valueOf(benefice)
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
     }
 
-    // Méthode pour appliquer une remise
     public void appliquerRemisePourcentage(Double pourcentage) {
         if (pourcentage != null && pourcentage >= 0 && pourcentage <= 100) {
             this.remisePourcentage = pourcentage;
@@ -108,10 +122,22 @@ public class LigneVente {
         }
     }
 
-    // Méthode pour obtenir le montant de la remise
+    public void modifierPrixUnitaire(Double nouveauPrix) {
+        if (nouveauPrix != null && nouveauPrix >= 0) {
+            this.prixUnitaire = nouveauPrix;
+            calculerSousTotal();
+        }
+    }
+
+    public void reinitialiserPrixOriginal() {
+        if (prixOriginalProduit != null && prixOriginalProduit > 0) {
+            this.prixUnitaire = prixOriginalProduit;
+            calculerSousTotal();
+        }
+    }
+
     public Double getMontantRemise() {
         if (prixUnitaire == null || quantite == null) return 0.0;
-
         Double totalSansRemise = prixUnitaire * quantite;
         Double remise = totalSansRemise - sousTotal;
         return BigDecimal.valueOf(Math.max(0, remise))
@@ -119,7 +145,6 @@ public class LigneVente {
                 .doubleValue();
     }
 
-    // Méthode utilitaire pour les DTO
     public String getProduitNom() {
         return produit != null ? produit.getNom() : null;
     }

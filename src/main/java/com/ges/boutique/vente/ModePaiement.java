@@ -5,5 +5,6 @@ public enum ModePaiement {
     ORANGE_MONEY,
     MOOV_MONEY,
     CARTE_BANCAIRE,
-    VIREMENT
+    VIREMENT,
+    CHEQUE
 }

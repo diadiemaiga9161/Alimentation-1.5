@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @Entity
 @Table(name = "caisses")
@@ -16,6 +17,9 @@ public class Caisse {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "numero_caisse", nullable = false, unique = true)
+    private String numeroCaisse;
 
     @Column(name = "solde_actuel", nullable = false)
     private Double soldeActuel = 0.0;
@@ -48,7 +52,7 @@ public class Caisse {
     private LocalDateTime dateFermeture;
 
     @Column(name = "est_ouverte", nullable = false)
-    private boolean estOuverte = true;
+    private boolean estOuverte = false;
 
     @Column(name = "nombre_operations")
     private Integer nombreOperations = 0;
@@ -64,6 +68,9 @@ public class Caisse {
 
     @PrePersist
     protected void onCreate() {
+        if (numeroCaisse == null || numeroCaisse.trim().isEmpty()) {
+            numeroCaisse = genererNumeroCaisse();
+        }
         dateOuverture = LocalDateTime.now();
         derniereOperation = LocalDateTime.now();
         soldeInitial = soldeActuel;
@@ -75,6 +82,10 @@ public class Caisse {
     protected void onUpdate() {
         derniereOperation = LocalDateTime.now();
         calculerEcart();
+    }
+
+    private String genererNumeroCaisse() {
+        return "CS-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
     }
 
     public void calculerEcart() {

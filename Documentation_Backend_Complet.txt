@@ -1,0 +1,443 @@
+================================================================================
+DOCUMENTATION COMPLÈTE DU BACKEND - SYSTÈME DE GESTION DE BOUTIQUE ALIMENTAIRE
+================================================================================
+
+Date de création: 30 Avril 2026
+Version: 1.0.0
+Auteur: Système de documentation automatique
+
+================================================================================
+TABLE DES MATIÈRES
+================================================================================
+
+1. INTRODUCTION
+2. ARCHITECTURE GÉNÉRALE
+3. TECHNOLOGIES UTILISÉES
+4. CONFIGURATION DE LA BASE DE DONNÉES
+5. SÉCURITÉ ET AUTHENTIFICATION
+6. APERÇU DES ENDPOINTS API
+7. MODÈLES DE DONNÉES (ENTITÉS)
+8. SERVICES MÉTIER
+9. CONTRÔLEURS REST
+10. GESTION DES EXCEPTIONS
+11. INITIALISATION DES DONNÉES
+12. DÉPLOIEMENT ET CONFIGURATION
+
+================================================================================
+1. INTRODUCTION
+================================================================================
+
+Le système de gestion de boutique alimentaire est une application Spring Boot complète
+conçue pour gérer tous les aspects d'une boutique de produits alimentaires :
+
+- Gestion des produits avec suivi des stocks et dates de péremption
+- Gestion des ventes (comptant et à crédit)
+- Gestion des clients et fournisseurs
+- Système de caisse multiple
+- Gestion des inventaires et mouvements de stock
+- Rapports et statistiques
+- Authentification JWT avec rôles (Admin/Vendeur)
+- API REST complète avec documentation Swagger
+
+================================================================================
+2. ARCHITECTURE GÉNÉRALE
+================================================================================
+
+L'application suit une architecture en couches typique Spring Boot :
+
+- **Couche Présentation** : Contrôleurs REST (@RestController)
+- **Couche Service** : Logique métier (@Service)
+- **Couche Repository** : Accès aux données (Spring Data JPA)
+- **Couche Modèle** : Entités JPA et DTOs
+- **Couche Sécurité** : Configuration Spring Security + JWT
+- **Couche Configuration** : Beans et configurations diverses
+
+Structure des packages :
+- com.ges.boutique/
+  ├── BoutiqueApplication.java (Classe principale)
+  ├── config/ (Configurations Spring)
+  ├── securite/ (Authentification JWT)
+  ├── utilisateur/ (Gestion des utilisateurs)
+  ├── produit/ (Gestion produits/catégories/fournisseurs)
+  ├── client/ (Gestion clients)
+  ├── vente/ (Gestion ventes)
+  ├── caisse/ (Gestion caisse)
+  ├── inventaire/ (Gestion inventaire)
+  ├── rapport/ (Rapports et statistiques)
+  ├── exception/ (Gestion erreurs)
+  └── HomeController.java (Routes frontend)
+
+================================================================================
+3. TECHNOLOGIES UTILISÉES
+================================================================================
+
+- **Framework** : Spring Boot 3.2.0
+- **Java** : Version 17
+- **Base de données** : MySQL 8.0.33
+- **ORM** : Hibernate/JPA
+- **Sécurité** : Spring Security + JWT (JJWT 0.11.5)
+- **Documentation API** : SpringDoc OpenAPI 2.2.0 (Swagger)
+- **Validation** : Bean Validation (Hibernate Validator)
+- **Cache** : Spring Cache
+- **Upload fichiers** : Spring Multipart
+- **Excel** : Apache POI 5.2.3
+- **Build** : Maven
+- **Tests** : JUnit + Spring Boot Test
+
+================================================================================
+4. CONFIGURATION DE LA BASE DE DONNÉES
+================================================================================
+
+Configuration MySQL dans application.properties :
+- URL : jdbc:mysql://localhost:3306/alimentation
+- Utilisateur : root
+- Mot de passe : (vide par défaut)
+- Driver : com.mysql.cj.jdbc.Driver
+- Pool de connexions : HikariCP (max 10 connexions)
+
+Stratégie DDL : create (recreation automatique des tables)
+Dialecte : MySQL8Dialect
+
+================================================================================
+5. SÉCURITÉ ET AUTHENTIFICATION
+================================================================================
+
+**Authentification JWT :**
+- Secret : configuré dans application.properties
+- Expiration : 24h pour access token, 7 jours pour refresh token
+- Algorithme : HS256
+
+**Rôles utilisateur :**
+- ADMIN : Accès complet à toutes les fonctionnalités
+- VENDEUR : Accès aux ventes, produits, clients (lecture/écriture limitée)
+
+**Endpoints protégés :**
+- /api/auth/** : Public (login/register)
+- /api/produits/** : ADMIN + VENDEUR
+- /api/ventes/** : ADMIN + VENDEUR
+- /api/admin/** : ADMIN uniquement
+- /api/rapports/** : ADMIN uniquement
+
+**CORS configuré pour :**
+- http://localhost:4200 (Angular dev)
+- http://localhost:8080 (Spring Boot)
+
+================================================================================
+6. APERÇU DES ENDPOINTS API
+================================================================================
+
+**Authentification :**
+- POST /api/auth/login
+- POST /api/auth/register
+- POST /api/auth/refresh
+
+**Utilisateurs :**
+- GET /api/utilisateurs
+- POST /api/utilisateurs
+- PUT /api/utilisateurs/{id}
+- DELETE /api/utilisateurs/{id}
+
+**Produits :**
+- GET /api/produits (liste complète)
+- GET /api/produits/{id}
+- POST /api/produits
+- PUT /api/produits/{id}
+- DELETE /api/produits/{id}
+- GET /api/produits/recherche
+- GET /api/produits/stock-faible
+- GET /api/produits/perimes
+- POST /api/produits/import (Excel)
+- GET /api/produits/export (Excel)
+
+**Catégories :**
+- GET /api/produits/categories
+- POST /api/produits/categories
+- PUT /api/produits/categories/{id}
+- DELETE /api/produits/categories/{id}
+
+**Fournisseurs :**
+- GET /api/produits/fournisseurs
+- POST /api/produits/fournisseurs
+- PUT /api/produits/fournisseurs/{id}
+- DELETE /api/produits/fournisseurs/{id}
+
+**Clients :**
+- GET /api/clients
+- POST /api/clients
+- PUT /api/clients/{id}
+- DELETE /api/clients/{id}
+
+**Ventes :**
+- GET /api/ventes
+- POST /api/ventes
+- GET /api/ventes/{id}
+- PUT /api/ventes/{id}/statut
+- POST /api/ventes/{id}/reglement
+
+**Caisses :**
+- GET /api/caisses
+- POST /api/caisses
+- PUT /api/caisses/{id}/ouvrir
+- PUT /api/caisses/{id}/fermer
+- GET /api/caisses/{id}/operations
+
+**Inventaire :**
+- GET /api/inventaire
+- POST /api/inventaire
+- PUT /api/inventaire/{id}
+
+**Rapports :**
+- GET /api/rapports/journalier
+- GET /api/rapports/hebdomadaire
+- GET /api/rapports/mensuel
+- GET /api/rapports/statistiques
+
+================================================================================
+7. MODÈLES DE DONNÉES (ENTITÉS)
+================================================================================
+
+**Utilisateur :**
+- id (Long)
+- username (String, unique)
+- password (String, encrypted)
+- nomComplet (String)
+- email (String)
+- telephone (String)
+- role (RoleUtilisateur: ADMIN/VENDEUR)
+- actif (boolean)
+
+**Produit :**
+- id (Long)
+- nom (String)
+- description (Text)
+- categorie (Categorie)
+- fournisseur (Fournisseur)
+- prixAchat (Double)
+- prixVente (Double)
+- quantite (Integer)
+- seuilAlerte (Integer)
+- codeBarre (String)
+- dateCreation (LocalDate)
+- datePeremption (LocalDate)
+- lotNumber (String)
+- conditionsStockage (String)
+- poidsVolume (Double)
+- uniteMesure (String)
+- bio (boolean)
+- origine (String)
+- typeVente (String: "DETAIL"/"ENGROS")
+- dateAjout/dateModification (LocalDateTime)
+
+**Categorie :**
+- id (Long)
+- nom (String, unique)
+- description (String)
+
+**Fournisseur :**
+- id (Long)
+- nom (String)
+- code (String, unique)
+- adresse (String)
+- telephone (String)
+- email (String)
+- contactNom/contactTelephone/contactEmail (String)
+- description (String)
+- typeProduits (String)
+- conditionsPaiement (String)
+- delaiLivraison (Integer)
+- note (Integer)
+- actif (boolean)
+
+**Client :**
+- id (Long)
+- nom (String)
+- prenom (String)
+- telephone (String)
+- email (String)
+- adresse (String)
+- dateNaissance (LocalDate)
+- genre (String)
+- actif (boolean)
+
+**Vente :**
+- id (Long)
+- numeroVente (String, unique)
+- dateVente (LocalDateTime)
+- client (Client, nullable)
+- vendeur (Utilisateur)
+- lignesVente (List<LigneVente>)
+- montantTotal (Double)
+- montantPaye (Double)
+- resteAPayer (Double)
+- statut (String: EN_COURS/TERMINEE/ANNULEE)
+- typeVente (String: COMPTANT/CREDIT)
+- modePaiement (ModePaiement)
+- caisse (Caisse)
+
+**LigneVente :**
+- id (Long)
+- vente (Vente)
+- produit (Produit)
+- quantite (Integer)
+- prixUnitaire (Double)
+- remise (Double)
+- montantTotal (Double)
+
+**Caisse :**
+- id (Long)
+- numeroCaisse (Integer)
+- nom (String)
+- soldeInitial (Double)
+- soldeActuel (Double)
+- statut (String: OUVERTE/FERMEE)
+- dateOuverture (LocalDateTime)
+- dateFermeture (LocalDateTime)
+- utilisateur (Utilisateur)
+
+**OperationCaisse :**
+- id (Long)
+- caisse (Caisse)
+- type (TypeOperationCaisse)
+- montant (Double)
+- description (String)
+- dateOperation (LocalDateTime)
+
+================================================================================
+8. SERVICES MÉTIER
+================================================================================
+
+**ProduitService :**
+- Gestion complète des produits (CRUD)
+- Recherche par nom/code-barre
+- Alertes stock faible/péremption
+- Calcul marges et statistiques
+- Import/Export Excel
+- Gestion catégories et fournisseurs
+
+**VenteService :**
+- Création et gestion des ventes
+- Calcul totaux et remises
+- Gestion paiements et crédits
+- Validation stock disponible
+- Historique des ventes
+
+**CaisseService :**
+- Ouverture/fermeture caisses
+- Suivi soldes et opérations
+- Validation mouvements
+
+**RapportService :**
+- Génération rapports journaliers/hebdomadaires/mensuels
+- Statistiques de vente
+- Analyses des stocks
+
+**UtilisateurService :**
+- Authentification et autorisation
+- Gestion profils utilisateurs
+- Chiffrement mots de passe
+
+================================================================================
+9. CONTRÔLEURS REST
+================================================================================
+
+Tous les contrôleurs utilisent :
+- @RestController pour API REST
+- @RequestMapping avec préfixe /api/
+- @PreAuthorize pour la sécurité
+- @Operation pour documentation Swagger
+- ResponseEntity pour réponses HTTP
+- DTOs pour éviter l'exposition directe des entités
+
+**Annotations communes :**
+- @RequiredArgsConstructor (Lombok)
+- @Tag pour regroupement Swagger
+- Gestion centralisée des erreurs via GlobalExceptionHandler
+
+================================================================================
+10. GESTION DES EXCEPTIONS
+================================================================================
+
+**Exceptions personnalisées :**
+- RessourceIntrouvableException : Ressource non trouvée (404)
+- StockInsuffisantException : Stock insuffisant pour vente
+- SoldeInsuffisantException : Solde caisse insuffisant
+- ValidationException : Erreurs de validation
+
+**GlobalExceptionHandler :**
+- Capture toutes les exceptions
+- Retourne réponses JSON standardisées
+- Logging des erreurs
+- Gestion spécifique par type d'exception
+
+================================================================================
+11. INITIALISATION DES DONNÉES
+================================================================================
+
+**DataInitializer (CommandLineRunner) :**
+- Création utilisateurs par défaut :
+  * Admin: admin/admin123
+  * Vendeur: vendeur/vendeur123
+  * Gestionnaire: gestionnaire/gestion123
+
+- Création catégories alimentaires :
+  * Produits Laitiers, Fruits et Légumes, Épicerie Salée/Sucrée
+  * Boissons, Viandes et Poissons, Surgelés, Bio
+
+- Création fournisseurs par défaut :
+  * Laiterie Moderne, Primeurs du Mali, Épicerie Tradition, Bio Saveurs
+
+- Création produits de démonstration :
+  * 11 produits avec données réalistes
+  * Différents types (lait, fruits, épicerie, bio)
+  * Stocks variés pour tester les alertes
+
+================================================================================
+12. DÉPLOIEMENT ET CONFIGURATION
+================================================================================
+
+**Prérequis :**
+- Java 17+
+- MySQL 8.0+
+- Maven 3.6+
+
+**Commandes de build :**
+- mvn clean compile
+- mvn package -DskipTests
+- mvn spring-boot:run
+
+**Configuration production :**
+- Modifier application.properties pour DB production
+- Configurer jwt.secret sécurisé
+- Activer HTTPS si nécessaire
+- Configurer logging approprié
+
+**Points d'entrée :**
+- Application : http://localhost:8080
+- API Docs : http://localhost:8080/swagger-ui.html
+- Frontend SPA : Routes gérées par HomeController
+
+**Base de données :**
+- Auto-création des tables via Hibernate
+- Données de test insérées automatiquement
+- Support UTF-8 complet
+
+================================================================================
+CONCLUSION
+================================================================================
+
+Cette application constitue un système complet de gestion de boutique alimentaire
+avec toutes les fonctionnalités nécessaires pour une exploitation quotidienne :
+
+- Interface API REST complète et documentée
+- Sécurité robuste avec JWT
+- Gestion avancée des stocks et alertes
+- Système de vente flexible (comptant/crédit)
+- Rapports et statistiques détaillés
+- Architecture modulaire et maintenable
+- Tests et données de démonstration
+
+L'application est prête pour la production avec une configuration MySQL appropriée.
+
+================================================================================
+FIN DE LA DOCUMENTATION
+================================================================================

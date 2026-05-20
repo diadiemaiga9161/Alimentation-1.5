@@ -7,8 +7,10 @@ import java.time.LocalDate;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class VenteCreditRequest extends VenteRequest {
-    private String clientNom;
-    private String clientTelephone;
-    private LocalDate dateEcheance;
-    private Double montantVerse;
+
+    // Constructeur qui force estCredit = true
+    public VenteCreditRequest() {
+        super();
+        this.setEstCredit(true);
+    }
 }
