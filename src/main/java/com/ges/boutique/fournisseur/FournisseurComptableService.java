@@ -2,6 +2,8 @@ package com.ges.boutique.fournisseur;
 
 import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.caisse.OperationCaisse;
+import com.ges.boutique.compte.CompteService;
+import com.ges.boutique.compte.TypeOperationCompte;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.SoldeInsuffisantException;
 import com.ges.boutique.produit.Categorie;
@@ -29,6 +31,8 @@ public class FournisseurComptableService {
     private final PaiementFournisseurRepository paiementRepository;
     private final CaisseService caisseService;
     private final CategorieRepository categorieRepository;
+    private final CompteService compteService;
+    private final AvanceFournisseurService avanceFournisseurService;
 
     @Transactional
     public AchatFournisseur creerAchat(AchatFournisseurRequest request) {
@@ -50,7 +54,9 @@ public class FournisseurComptableService {
         achat.setCommentaire(request.getCommentaire());
         achat.setUtilisateurId(request.getUtilisateurId());
         achat.setMontantTotal(0.0);
-        achat.setMontantPaye(request.getMontantPaye() != null ? request.getMontantPaye() : 0.0);
+        double avanceUtilisee = request.getMontantAvanceUtilise() != null ? request.getMontantAvanceUtilise() : 0.0;
+        double paiementImmediat = request.getMontantPaye() != null ? request.getMontantPaye() : 0.0;
+        achat.setMontantPaye(paiementImmediat + avanceUtilisee);
 
         double totalAchat = 0.0;
         for (LigneAchatRequest ligneReq : request.getLignes()) {
@@ -83,6 +89,12 @@ public class FournisseurComptableService {
             achat.setStatut(StatutAchat.PAYE);
         } else {
             achat.setStatut(StatutAchat.EN_COURS);
+        }
+
+        // Déduire l'avance fournisseur si applicable (déjà payé via l'avance)
+        if (avanceUtilisee > 0) {
+            avanceFournisseurService.utiliserAvance(fournisseur.getId(), avanceUtilisee);
+            log.info("Avance fournisseur utilisée: {} F pour {}", avanceUtilisee, fournisseur.getNom());
         }
 
         fournisseur.setTotalAchats(fournisseur.getTotalAchats() + totalAchat);
@@ -193,9 +205,21 @@ public class FournisseurComptableService {
             } catch (SoldeInsuffisantException e) {
                 throw new SoldeInsuffisantException(
                         "Solde caisse insuffisant pour payer " + request.getMontant() +
-                                ". Veuillez utiliser un autre mode de paiement (VIREMENT, CHEQUE)."
+                                ". Veuillez utiliser un autre mode de paiement (VIREMENT, CHEQUE, BANQUE)."
                 );
             }
+        } else if (request.getModePaiement() == ModePaiementFournisseur.BANQUE) {
+            if (request.getCompteId() == null)
+                throw new IllegalArgumentException("Le compte bancaire est obligatoire pour un paiement par banque");
+            compteService.debiterCompte(
+                    request.getCompteId(),
+                    request.getMontant(),
+                    "Paiement fournisseur - " + fournisseur.getNom(),
+                    TypeOperationCompte.PAIEMENT_FOURNISSEUR,
+                    request.getUtilisateurId()
+            );
+            paiement.setCompteId(request.getCompteId());
+            log.info("Débit compte bancaire id={} pour paiement fournisseur", request.getCompteId());
         }
 
         PaiementFournisseur savedPaiement = paiementRepository.save(paiement);

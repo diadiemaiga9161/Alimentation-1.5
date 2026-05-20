@@ -40,10 +40,12 @@ public class PaiementFournisseur {
     @Column(name = "utilisateur_id")
     private Long utilisateurId;
 
-    // Lien avec l'opération de caisse si paiement en espèces
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "operation_caisse_id")
     private OperationCaisse operationCaisse;
+
+    @Column(name = "compte_id")
+    private Long compteId;
 
     @PrePersist
     protected void onCreate() {
