@@ -9,4 +9,6 @@ public class LigneVenteRequest {
     private Double prixUnitaire;        // Prix modifiable à la volée
     private Double remisePourcentage;
     private Double remiseMontant;
+    private Double prixAchat;           // Prix achat du niveau (conditionnement) si applicable
+    private String niveauNom;           // Nom du niveau vendu (ex: "Cartouche") pour historique
 }

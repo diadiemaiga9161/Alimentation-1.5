@@ -4,6 +4,7 @@ import com.ges.boutique.avance.AvanceClientService;
 import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
+import com.ges.boutique.config.NotificationService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.StockInsuffisantException;
 import com.ges.boutique.inventaire.InventaireService;
@@ -13,6 +14,8 @@ import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,11 +40,13 @@ public class VenteServiceImpl implements VenteService {
     private final CaisseService caisseService;
     private final ClientRepository clientRepository;
     private final AvanceClientService avanceClientService;
+    private final NotificationService notificationService;
 
     // ==================== CRÉATION VENTES ====================
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente creerVente(VenteRequest request) {
         log.info("Création d'une nouvelle vente COMPTANT pour le vendeur ID: {}", request.getVendeurId());
 
@@ -51,11 +56,22 @@ public class VenteServiceImpl implements VenteService {
                 request.getModePaiement().toString(), request.getReferencePaiement());
 
         log.info("Vente comptant créée - Numéro: {}, Montant: {}", savedVente.getNumeroVente(), savedVente.getMontantTotal());
+
+        // Notification temps réel
+        notificationService.notifierNouvelleVente(Map.of(
+                "id", savedVente.getId(),
+                "numeroVente", savedVente.getNumeroVente(),
+                "montantTotal", savedVente.getMontantTotal(),
+                "type", "COMPTANT"
+        ));
+        notificationService.notifierMiseAJourDashboard();
+
         return savedVente;
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente creerVenteCredit(VenteCreditRequest request) {
         log.info("=== CRÉATION D'UN CRÉDIT UNIQUEMENT ===");
         log.info("Client: {}", request.getClientNom());
@@ -123,6 +139,10 @@ public class VenteServiceImpl implements VenteService {
             vente.setDateReglement(LocalDate.now());
         }
 
+        if (request.getClientRequestId() != null && !request.getClientRequestId().isBlank()) {
+            vente.setClientRequestId(request.getClientRequestId());
+        }
+
         Vente savedVente = venteRepository.save(vente);
         mettreAJourStockVente(savedVente);
         caisseService.enregistrerVenteCredit(savedVente, request.getVendeurId(),
@@ -135,6 +155,16 @@ public class VenteServiceImpl implements VenteService {
         log.info("✅ CRÉDIT créé - Numéro: {}, Client: {}, Montant: {}, estCredit: {}",
                 savedVente.getNumeroVente(), savedVente.getClientNom(),
                 savedVente.getMontantTotal(), savedVente.getEstCredit());
+
+        // Notification temps réel
+        notificationService.notifierNouvelleVente(Map.of(
+                "id", savedVente.getId(),
+                "numeroVente", savedVente.getNumeroVente(),
+                "montantTotal", savedVente.getMontantTotal(),
+                "clientNom", savedVente.getClientNom() != null ? savedVente.getClientNom() : "",
+                "type", "CREDIT"
+        ));
+        notificationService.notifierMiseAJourDashboard();
 
         return savedVente;
     }
@@ -199,7 +229,9 @@ public class VenteServiceImpl implements VenteService {
 
     @Override
     public List<Vente> obtenirVentesDuJour() {
-        return venteRepository.findTodayVentes().stream()
+        LocalDateTime debut = LocalDate.now().atStartOfDay();
+        LocalDateTime fin = LocalDate.now().atTime(LocalTime.MAX);
+        return venteRepository.findTodayVentes(debut, fin).stream()
                 .filter(v -> !Boolean.TRUE.equals(v.getAnnulee()))
                 .collect(Collectors.toList());
     }
@@ -208,6 +240,7 @@ public class VenteServiceImpl implements VenteService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente modifierVente(Long venteId, VenteRequest request) {
         log.info("Modification de la vente ID: {}", venteId);
 
@@ -215,11 +248,6 @@ public class VenteServiceImpl implements VenteService {
 
         if (Boolean.TRUE.equals(venteExistante.getEstCredit())) {
             throw new IllegalArgumentException("Utilisez modifierVenteCredit pour modifier un crédit");
-        }
-
-        LocalDateTime limite = venteExistante.getDateVente().plusHours(24);
-        if (LocalDateTime.now().isAfter(limite)) {
-            throw new IllegalStateException("La vente ne peut plus être modifiée après 24 heures");
         }
 
         retablirStockAncienneVente(venteExistante);
@@ -259,6 +287,7 @@ public class VenteServiceImpl implements VenteService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente modifierVenteCredit(Long venteId, VenteCreditRequest request) {
         log.info("Modification du crédit ID: {}", venteId);
 
@@ -270,11 +299,6 @@ public class VenteServiceImpl implements VenteService {
 
         if (Boolean.TRUE.equals(venteExistante.getCreditRegle())) {
             throw new IllegalStateException("Impossible de modifier un crédit déjà réglé");
-        }
-
-        LocalDateTime limite = venteExistante.getDateVente().plusHours(24);
-        if (LocalDateTime.now().isAfter(limite)) {
-            throw new IllegalStateException("Le crédit ne peut plus être modifié après 24 heures");
         }
 
         retablirStockAncienneVente(venteExistante);
@@ -350,11 +374,6 @@ public class VenteServiceImpl implements VenteService {
             throw new IllegalArgumentException("Utilisez supprimerVenteCredit pour supprimer un crédit");
         }
 
-        LocalDateTime limite = vente.getDateVente().plusHours(24);
-        if (LocalDateTime.now().isAfter(limite)) {
-            throw new IllegalStateException("La vente ne peut plus être supprimée après 24 heures");
-        }
-
         retablirStockAncienneVente(vente);
         caisseService.annulerVente(vente, null, "Suppression vente");
 
@@ -379,11 +398,6 @@ public class VenteServiceImpl implements VenteService {
             throw new IllegalStateException("Impossible de supprimer un crédit déjà réglé");
         }
 
-        LocalDateTime limite = vente.getDateVente().plusHours(24);
-        if (LocalDateTime.now().isAfter(limite)) {
-            throw new IllegalStateException("Le crédit ne peut plus être supprimé après 24 heures");
-        }
-
         retablirStockAncienneVente(vente);
         caisseService.annulerVenteCredit(vente, null, "Suppression crédit");
 
@@ -395,6 +409,7 @@ public class VenteServiceImpl implements VenteService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente annulerVente(Long venteId, Long utilisateurId, String motif) {
         log.info("Annulation de la vente ID: {} par utilisateur: {}", venteId, utilisateurId);
 
@@ -402,11 +417,6 @@ public class VenteServiceImpl implements VenteService {
 
         if (Boolean.TRUE.equals(vente.getAnnulee())) {
             throw new IllegalStateException("Cette vente est déjà annulée");
-        }
-
-        LocalDateTime limite = vente.getDateVente().plusHours(24);
-        if (LocalDateTime.now().isAfter(limite)) {
-            throw new IllegalStateException("La vente ne peut plus être annulée après 24 heures");
         }
 
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
@@ -431,11 +441,15 @@ public class VenteServiceImpl implements VenteService {
         vente.setDateAnnulation(LocalDateTime.now());
         vente.setUtilisateurAnnulation(utilisateurId);
 
-        return venteRepository.save(vente);
+        Vente saved = venteRepository.save(vente);
+        notificationService.notifierVenteAnnulee(Map.of("venteId", venteId, "montant", vente.getMontantTotal()));
+        notificationService.notifierMiseAJourDashboard();
+        return saved;
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Vente annulerVenteCredit(Long venteId, Long utilisateurId, String motif) {
         return annulerVente(venteId, utilisateurId, motif);
     }
@@ -559,12 +573,22 @@ public class VenteServiceImpl implements VenteService {
 
     @Override
     public Map<String, Object> obtenirStatistiquesChiffreAffaire() {
+        LocalDate today = LocalDate.now();
+        LocalDateTime debutJour = today.atStartOfDay();
+        LocalDateTime finJour = today.atTime(LocalTime.MAX);
+        LocalDateTime debutSemaine = today.minusDays(today.getDayOfWeek().getValue() - 1).atStartOfDay();
+        LocalDateTime debutMois = today.withDayOfMonth(1).atStartOfDay();
+
         Map<String, Object> stats = new HashMap<>();
-        stats.put("chiffreAffaireJournalier", venteRepository.getChiffreAffaireJournalier() != null ? venteRepository.getChiffreAffaireJournalier() : 0);
-        stats.put("chiffreAffaireHebdomadaire", venteRepository.getChiffreAffaireHebdomadaire() != null ? venteRepository.getChiffreAffaireHebdomadaire() : 0);
-        stats.put("chiffreAffaireMensuel", venteRepository.getChiffreAffaireMensuel() != null ? venteRepository.getChiffreAffaireMensuel() : 0);
+        Double caJour = venteRepository.getChiffreAffaireJournalier(debutJour, finJour);
+        stats.put("chiffreAffaireJournalier", caJour != null ? caJour : 0);
+        Double caHebdo = venteRepository.getChiffreAffaireHebdomadaire(debutSemaine, finJour);
+        stats.put("chiffreAffaireHebdomadaire", caHebdo != null ? caHebdo : 0);
+        Double caMensuel = venteRepository.getChiffreAffaireMensuel(debutMois, finJour);
+        stats.put("chiffreAffaireMensuel", caMensuel != null ? caMensuel : 0);
         stats.put("totalCreditsNonRegles", venteRepository.getTotalCreditsNonRegles() != null ? venteRepository.getTotalCreditsNonRegles() : 0);
-        stats.put("reglementsDuJour", venteRepository.getTotalReglementsDuJour() != null ? venteRepository.getTotalReglementsDuJour() : 0);
+        Double reglementsJour = venteRepository.getTotalReglementsDuJour(today, today);
+        stats.put("reglementsDuJour", reglementsJour != null ? reglementsJour : 0);
         return stats;
     }
 
@@ -738,6 +762,10 @@ public class VenteServiceImpl implements VenteService {
             }
         }
 
+        if (request.getClientRequestId() != null && !request.getClientRequestId().isBlank()) {
+            vente.setClientRequestId(request.getClientRequestId());
+        }
+
         Vente savedVente = venteRepository.save(vente);
         mettreAJourStockVente(savedVente);
         return savedVente;
@@ -782,7 +810,11 @@ public class VenteServiceImpl implements VenteService {
         LigneVente ligne = new LigneVente();
         ligne.setProduit(produit);
         ligne.setQuantite(ligneRequest.getQuantite());
-        ligne.setPrixAchat(produit.getPrixAchat());
+        // Utilise le prix achat du niveau (conditionnement) si fourni, sinon prix achat du produit
+        Double prixAchatEffectif = (ligneRequest.getPrixAchat() != null && ligneRequest.getPrixAchat() > 0)
+                ? ligneRequest.getPrixAchat()
+                : produit.getPrixAchat();
+        ligne.setPrixAchat(prixAchatEffectif);
 
         Double prixVente = ligneRequest.getPrixUnitaire() != null ? ligneRequest.getPrixUnitaire() : produit.getPrixVente();
         ligne.setPrixUnitaire(prixVente);
@@ -845,9 +877,94 @@ public class VenteServiceImpl implements VenteService {
 
     private void mettreAJourStockVente(Vente vente) {
         for (LigneVente ligne : vente.getLignes()) {
-            inventaireService.sortieStock(ligne.getProduit().getId(), ligne.getQuantite(),
+            Long produitId = ligne.getProduit().getId();
+            inventaireService.sortieStock(produitId, ligne.getQuantite(),
                     vente.getVendeur().getId(), "Vente N°" + vente.getNumeroVente());
+            produitRepository.findById(produitId).ifPresent(p ->
+                    notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite()));
         }
+    }
+
+    // ==================== MODIFICATION LIGNES AVEC AJUSTEMENT CAISSE ====================
+
+    @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
+    public Map<String, Object> modifierLignesVente(Long venteId, ModificationLignesRequest request) {
+        log.info("=== MODIFICATION LIGNES VENTE ID: {} ===", venteId);
+
+        Vente vente = venteRepository.findById(venteId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Vente introuvable: " + venteId));
+
+        if (Boolean.TRUE.equals(vente.getAnnulee())) {
+            throw new IllegalStateException("Impossible de modifier une vente annulée");
+        }
+
+        if (Boolean.TRUE.equals(vente.getEstCredit()) && Boolean.TRUE.equals(vente.getCreditRegle())) {
+            throw new IllegalStateException("Impossible de modifier un crédit entièrement réglé");
+        }
+
+        if (request.getLignes() == null || request.getLignes().isEmpty()) {
+            throw new IllegalArgumentException("La liste des nouvelles lignes ne peut pas être vide");
+        }
+
+        double ancienTotal = vente.getMontantTotal() != null ? vente.getMontantTotal() : 0.0;
+
+        // 1. Remettre l'ancien stock
+        retablirStockAncienneVente(vente);
+        vente.getLignes().clear();
+        venteRepository.save(vente);
+
+        // 2. Construire les nouvelles lignes
+        for (LigneVenteRequest ligneReq : request.getLignes()) {
+            LigneVente ligne = creerLigneVente(ligneReq);
+            vente.ajouterLigne(ligne);
+        }
+
+        vente.calculerTotal();
+        double nouveauTotal = vente.getMontantTotal() != null ? vente.getMontantTotal() : 0.0;
+        double difference = nouveauTotal - ancienTotal;
+
+        // 3. Ajuster la caisse selon la différence
+        String motif = (request.getMotif() != null ? request.getMotif() : "Modification vente N°" + vente.getNumeroVente());
+
+        if (Math.abs(difference) > 0.01) {
+            if (difference > 0) {
+                // Client paye la différence → ENTRÉE caisse
+                caisseService.entreeCaisse(difference,
+                        "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
+                        request.getUtilisateurId(), "ESPECES", null);
+                log.info("Entrée caisse: +{} F (client paye la différence)", difference);
+            } else {
+                // Remboursement client → SORTIE caisse
+                caisseService.sortieCaisse(Math.abs(difference),
+                        "Remboursement modification vente N°" + vente.getNumeroVente() + " - " + motif,
+                        request.getUtilisateurId());
+                log.info("Sortie caisse: -{} F (remboursement client)", Math.abs(difference));
+            }
+        }
+
+        // 4. Mettre à jour montantVerse si crédit
+        if (Boolean.TRUE.equals(vente.getEstCredit())) {
+            double montantVerse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0;
+            vente.setMontantRestant(nouveauTotal - montantVerse);
+            if (vente.getMontantRestant() <= 0) {
+                vente.setCreditRegle(true);
+                vente.setDateReglement(LocalDate.now());
+            }
+        }
+
+        Vente venteSauvee = venteRepository.save(vente);
+        mettreAJourStockVente(venteSauvee);
+
+        log.info("Vente modifiée: ancien total={}, nouveau total={}, différence={}", ancienTotal, nouveauTotal, difference);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("ancienTotal", ancienTotal);
+        result.put("nouveauTotal", nouveauTotal);
+        result.put("difference", difference);
+        result.put("venteId", venteId);
+        result.put("numeroVente", vente.getNumeroVente());
+        return result;
     }
 
     private void retablirStockAncienneVente(Vente vente) {
