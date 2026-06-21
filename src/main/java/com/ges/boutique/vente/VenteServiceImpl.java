@@ -790,7 +790,8 @@ public class VenteServiceImpl implements VenteService {
             if (ligne.getQuantite() == null || ligne.getQuantite() <= 0) {
                 throw new IllegalArgumentException("La quantité doit être positive");
             }
-            quantitesParProduit.merge(ligne.getProduitId(), ligne.getQuantite(), Integer::sum);
+            int facteur = ligne.getNiveauFacteur() != null && ligne.getNiveauFacteur() > 1 ? ligne.getNiveauFacteur() : 1;
+            quantitesParProduit.merge(ligne.getProduitId(), ligne.getQuantite() * facteur, Integer::sum);
         }
 
         for (Map.Entry<Long, Integer> entry : quantitesParProduit.entrySet()) {
@@ -815,6 +816,9 @@ public class VenteServiceImpl implements VenteService {
                 ? ligneRequest.getPrixAchat()
                 : produit.getPrixAchat();
         ligne.setPrixAchat(prixAchatEffectif);
+        // Facteur pour déduction stock en unité de base (pièces). Ex: 200 si 1 Carton = 200 Pièces
+        ligne.setNiveauFacteur(ligneRequest.getNiveauFacteur() != null && ligneRequest.getNiveauFacteur() > 1
+                ? ligneRequest.getNiveauFacteur() : 1);
 
         Double prixVente = ligneRequest.getPrixUnitaire() != null ? ligneRequest.getPrixUnitaire() : produit.getPrixVente();
         ligne.setPrixUnitaire(prixVente);
@@ -878,7 +882,8 @@ public class VenteServiceImpl implements VenteService {
     private void mettreAJourStockVente(Vente vente) {
         for (LigneVente ligne : vente.getLignes()) {
             Long produitId = ligne.getProduit().getId();
-            inventaireService.sortieStock(produitId, ligne.getQuantite(),
+            int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
+            inventaireService.sortieStock(produitId, ligne.getQuantite() * facteur,
                     vente.getVendeur().getId(), "Vente N°" + vente.getNumeroVente());
             produitRepository.findById(produitId).ifPresent(p ->
                     notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite()));
@@ -969,7 +974,8 @@ public class VenteServiceImpl implements VenteService {
 
     private void retablirStockAncienneVente(Vente vente) {
         for (LigneVente ligne : vente.getLignes()) {
-            inventaireService.entreeStock(ligne.getProduit().getId(), ligne.getQuantite(),
+            int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
+            inventaireService.entreeStock(ligne.getProduit().getId(), ligne.getQuantite() * facteur,
                     vente.getVendeur().getId(), "Annulation vente N°" + vente.getNumeroVente());
         }
     }

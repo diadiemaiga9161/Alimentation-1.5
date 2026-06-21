@@ -11,4 +11,5 @@ public class LigneVenteRequest {
     private Double remiseMontant;
     private Double prixAchat;           // Prix achat du niveau (conditionnement) si applicable
     private String niveauNom;           // Nom du niveau vendu (ex: "Cartouche") pour historique
+    private Integer niveauFacteur;      // Facteur de conversion vers l'unité de base (ex: 200 si 1 Carton = 200 Pièces)
 }

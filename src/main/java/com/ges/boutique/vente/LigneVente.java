@@ -59,6 +59,9 @@ public class LigneVente {
     @Column(name = "benefice", nullable = false)
     private Double benefice = 0.0;
 
+    @Column(name = "niveau_facteur")
+    private Integer niveauFacteur = 1; // facteur pour déduction stock (ex: 200 si 1 Carton = 200 Pièces)
+
     @PrePersist
     @PreUpdate
     protected void calculerSousTotal() {
