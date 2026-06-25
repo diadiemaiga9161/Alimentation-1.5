@@ -20,9 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.transaction.annotation.Transactional;
 
-
-
-@Transactional  // Ajoutez cette annotation
+@Transactional
 @RestController
 @RequestMapping("/api/caisse")
 @RequiredArgsConstructor
@@ -422,6 +420,20 @@ public class CaisseController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("statistiques", stats);
+        return ResponseEntity.ok(response);
+    }
+
+    // ==================== TRANSFERT CAISSE → BANQUE ====================
+
+    @PostMapping("/transferer-vers-banque")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Transférer de l'argent de la caisse vers un compte bancaire")
+    public ResponseEntity<Map<String, Object>> transfererVersBanque(@RequestBody TransfertCaisseBanqueRequest request) {
+        Map<String, Object> result = caisseService.transfererVersBanque(request);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Transfert caisse → banque effectué avec succès");
+        response.put("resultat", result);
         return ResponseEntity.ok(response);
     }
 

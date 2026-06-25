@@ -10,5 +10,6 @@ public class PaiementFournisseurRequest {
     private String reference;
     private String observation;
     private Long utilisateurId;
-    private Long compteId; // requis si modePaiement = BANQUE
+    private Long compteId;
+    private Long achatCibleId;  // NOUVEAU: pour payer un achat spécifique
 }

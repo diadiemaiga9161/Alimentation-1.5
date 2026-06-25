@@ -29,4 +29,7 @@ public class VenteRequest {
     private LocalDate dateEcheance;
     private Double montantVerse;
     private Double montantAvanceUtilise = 0.0;
+
+    // Idempotence - renseigné par le contrôleur depuis le header X-Client-Request-ID
+    private String clientRequestId;
 }

@@ -62,6 +62,9 @@ public class LigneVente {
     @Column(name = "niveau_facteur")
     private Integer niveauFacteur = 1; // facteur pour déduction stock (ex: 200 si 1 Carton = 200 Pièces)
 
+    @Column(name = "niveau_id")
+    private Long niveauId; // ID du ProduitNiveau vendu (null = vente au niveau produit de base)
+
     @PrePersist
     @PreUpdate
     protected void calculerSousTotal() {

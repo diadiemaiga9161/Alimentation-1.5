@@ -51,6 +51,15 @@ public class AchatFournisseur {
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
 
+    @Column(name = "montant_avance_utilise", nullable = false)
+    private Double montantAvanceUtilise = 0.0;
+
+    @Column(name = "mode_paiement_immediat")
+    private String modePaiementImmediat;
+
+    @Column(name = "compte_id_paiement")
+    private Long compteIdPaiement;
+
     @OneToMany(mappedBy = "achat", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonManagedReference
     private List<LigneAchatFournisseur> lignes = new ArrayList<>();
@@ -61,6 +70,7 @@ public class AchatFournisseur {
         if (dateAchat == null) dateAchat = LocalDateTime.now();
         if (montantPaye == null) montantPaye = 0.0;
         if (montantTotal == null) montantTotal = 0.0;
+        if (montantAvanceUtilise == null) montantAvanceUtilise = 0.0;
         montantRestant = montantTotal - montantPaye;
         if (montantRestant <= 0.01) {
             statut = StatutAchat.PAYE;
@@ -71,13 +81,13 @@ public class AchatFournisseur {
 
     @PreUpdate
     protected void onUpdate() {
+        if (statut == StatutAchat.ANNULE) return;
         if (montantTotal == null) montantTotal = 0.0;
         if (montantPaye == null) montantPaye = 0.0;
+        if (montantAvanceUtilise == null) montantAvanceUtilise = 0.0;
         montantRestant = montantTotal - montantPaye;
         if (montantRestant <= 0.01) {
             statut = StatutAchat.PAYE;
-        } else if (montantPaye > 0 && montantRestant > 0.01) {
-            statut = StatutAchat.EN_COURS;
         } else {
             statut = StatutAchat.EN_COURS;
         }

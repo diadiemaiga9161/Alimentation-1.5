@@ -27,7 +27,8 @@ public class JwtFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
 
-        return path.equals("/")
+        return path.startsWith("/ws")   // WebSocket STOMP endpoint
+                || path.equals("/")
                 || path.equals("/index.html")
                 || path.equals("/favicon.ico")
 

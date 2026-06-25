@@ -1,5 +1,6 @@
 package com.ges.boutique.securite;
 
+import com.ges.boutique.email.PasswordResetService;
 import com.ges.boutique.utilisateur.AuthRequest;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurService;
@@ -27,6 +28,7 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final UtilisateurService utilisateurService;
+    private final PasswordResetService passwordResetService;
 
     @PostMapping("/login")
     @Operation(summary = "Connexion utilisateur")
@@ -57,7 +59,8 @@ public class AuthController {
         response.put("nomComplet", utilisateur.getNomComplet());
         response.put("email", utilisateur.getEmail());
         response.put("telephone", utilisateur.getTelephone());
-        response.put("id", utilisateur.getId()); // ID dans la réponse JSON
+        response.put("id", utilisateur.getId());
+        response.put("photo", utilisateur.getPhoto() != null ? utilisateur.getPhoto() : "");
 
         return ResponseEntity.ok(response);
     }
@@ -83,6 +86,7 @@ public class AuthController {
         response.put("telephone", utilisateur.getTelephone());
         response.put("role", utilisateur.getRole().name());
         response.put("actif", utilisateur.isActif());
+        response.put("photo", utilisateur.getPhoto() != null ? utilisateur.getPhoto() : "");
 
         return ResponseEntity.ok(response);
     }
@@ -96,6 +100,40 @@ public class AuthController {
         return ResponseEntity.ok(utilisateur);
     }
 
+    @PostMapping("/mot-de-passe-oublie")
+    @Operation(summary = "Demander la réinitialisation du mot de passe")
+    public ResponseEntity<Map<String, String>> motDePasseOublie(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "L'email est obligatoire"));
+        }
+        try {
+            passwordResetService.demanderReset(email.trim());
+            return ResponseEntity.ok(Map.of("message", "Un lien de réinitialisation a été envoyé à votre adresse email"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/verifier-token-reset")
+    @Operation(summary = "Vérifier si un token de reset est valide")
+    public ResponseEntity<Map<String, Boolean>> verifierTokenReset(@RequestParam String token) {
+        return ResponseEntity.ok(Map.of("valide", passwordResetService.validerToken(token)));
+    }
+
+    @PostMapping("/reinitialiser-password")
+    @Operation(summary = "Réinitialiser le mot de passe avec un token")
+    public ResponseEntity<Map<String, String>> reinitialiserPassword(@RequestBody Map<String, String> body) {
+        String token = body.get("token");
+        String password = body.containsKey("nouveauPassword") ? body.get("nouveauPassword") : body.get("password");
+        try {
+            passwordResetService.reinitialiserPassword(token, password);
+            return ResponseEntity.ok(Map.of("message", "Mot de passe modifié avec succès"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @PutMapping("/profil")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Modifier le profil de l'utilisateur connecté")
@@ -104,6 +142,14 @@ public class AuthController {
             @RequestBody Utilisateur utilisateurDetails) {
         String username = principal.getName();
         Utilisateur utilisateur = utilisateurService.obtenirUtilisateurParUsername(username);
+
+        // Empêcher la modification du rôle via le profil (le rôle vient de l'entité existante)
+        utilisateurDetails.setRole(null);
+
+        // Empêcher l'enregistrement d'un mot de passe vide
+        if (utilisateurDetails.getPassword() != null && utilisateurDetails.getPassword().trim().isEmpty()) {
+            utilisateurDetails.setPassword(null);
+        }
 
         Utilisateur updated = utilisateurService.modifierUtilisateur(utilisateur.getId(), utilisateurDetails);
         return ResponseEntity.ok(updated);

@@ -50,6 +50,9 @@ public class Utilisateur implements UserDetails {
     @Column(name = "date_modification")
     private LocalDateTime dateModification;
 
+    @Column(columnDefinition = "LONGTEXT")
+    private String photo;
+
     @PrePersist
     protected void onCreate() {
         dateCreation = LocalDateTime.now();

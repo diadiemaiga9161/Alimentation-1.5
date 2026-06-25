@@ -1,5 +1,7 @@
 package com.ges.boutique.boutique;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,6 +14,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Boutique {
 
     @Id
@@ -57,6 +60,9 @@ public class Boutique {
     @Column(name = "code_postal")
     private String codePostal = "00000";
 
+    @Column(name = "logo", columnDefinition = "MEDIUMTEXT")
+    private String logo;
+
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
 
@@ -67,6 +73,10 @@ public class Boutique {
     protected void onCreate() {
         dateCreation = LocalDateTime.now();
         dateModification = LocalDateTime.now();
+
+        if (actif == null) {
+            actif = true;
+        }
     }
 
     @PreUpdate
@@ -74,7 +84,31 @@ public class Boutique {
         dateModification = LocalDateTime.now();
     }
 
-    // Méthodes utilitaires pour les factures
+    // =====================================================
+    // COMPATIBILITÉ FRONTEND
+    // =====================================================
+    // Le front utilise logoPath.
+    // La base garde le vrai champ logo.
+    // Cette méthode évite l'erreur "Unrecognized field logoPath"
+    // sans changer Angular.
+
+    @JsonProperty("logoPath")
+    public String getLogoPath() {
+        return this.logo;
+    }
+
+    @JsonProperty("logoPath")
+    public void setLogoPath(String logoPath) {
+        // Ne pas écraser le logo avec une valeur vide.
+        if (logoPath != null && !logoPath.isBlank()) {
+            this.logo = logoPath;
+        }
+    }
+
+    // =====================================================
+    // MÉTHODES UTILITAIRES POUR LES FACTURES
+    // =====================================================
+
     public String getAdresseComplete() {
         return adresse + ", " + ville + " " + codePostal + ", " + pays;
     }

@@ -6,6 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "paiements_fournisseur")
@@ -29,7 +31,7 @@ public class PaiementFournisseur {
     private Double montant;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "mode_paiement", nullable = false)
+    @Column(name = "mode_paiement", nullable = false, columnDefinition = "VARCHAR(20)")
     private ModePaiementFournisseur modePaiement;
 
     private String reference;
@@ -51,4 +53,12 @@ public class PaiementFournisseur {
     protected void onCreate() {
         if (datePaiement == null) datePaiement = LocalDateTime.now();
     }
+
+    // Ajouter ce champ
+    @Column(name = "achat_cible_id")
+    private Long achatCibleId;  // L'achat spécifique auquel ce paiement est destiné (optionnel)
+
+    // Ajouter cette relation
+    @OneToMany(mappedBy = "paiementId", fetch = FetchType.LAZY)
+    private List<AchatPaiementLien> liensAchats = new ArrayList<>();
 }

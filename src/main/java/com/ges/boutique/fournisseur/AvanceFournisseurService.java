@@ -8,4 +8,5 @@ public interface AvanceFournisseurService {
     List<AvanceFournisseur> getHistoriqueParFournisseur(Long fournisseurId);
     List<AvanceFournisseur> getToutesLesAvances();
     void utiliserAvance(Long fournisseurId, Double montantAUtiliser);
+    void annulerUtilisationAvance(Long fournisseurId, Double montantAAnnuler);
 }

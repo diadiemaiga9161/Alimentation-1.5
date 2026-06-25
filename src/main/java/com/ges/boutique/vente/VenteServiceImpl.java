@@ -9,6 +9,8 @@ import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.StockInsuffisantException;
 import com.ges.boutique.inventaire.InventaireService;
 import com.ges.boutique.produit.Produit;
+import com.ges.boutique.produit.ProduitNiveau;
+import com.ges.boutique.produit.ProduitNiveauRepository;
 import com.ges.boutique.produit.ProduitRepository;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
@@ -34,6 +36,7 @@ public class VenteServiceImpl implements VenteService {
 
     private final VenteRepository venteRepository;
     private final ProduitRepository produitRepository;
+    private final ProduitNiveauRepository niveauRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final InventaireService inventaireService;
     private final LigneVenteRepository ligneVenteRepository;
@@ -784,14 +787,17 @@ public class VenteServiceImpl implements VenteService {
             throw new IllegalArgumentException("La référence de paiement est requise");
         }
 
+        // Lignes sans niveauId : agrégation par produit (comportement existant)
         Map<Long, Integer> quantitesParProduit = new HashMap<>();
         for (LigneVenteRequest ligne : request.getLignes()) {
             if (ligne.getProduitId() == null) throw new IllegalArgumentException("L'ID produit est requis");
             if (ligne.getQuantite() == null || ligne.getQuantite() <= 0) {
                 throw new IllegalArgumentException("La quantité doit être positive");
             }
-            int facteur = ligne.getNiveauFacteur() != null && ligne.getNiveauFacteur() > 1 ? ligne.getNiveauFacteur() : 1;
-            quantitesParProduit.merge(ligne.getProduitId(), ligne.getQuantite() * facteur, Integer::sum);
+            if (ligne.getNiveauId() == null) {
+                int facteur = ligne.getNiveauFacteur() != null && ligne.getNiveauFacteur() > 1 ? ligne.getNiveauFacteur() : 1;
+                quantitesParProduit.merge(ligne.getProduitId(), ligne.getQuantite() * facteur, Integer::sum);
+            }
         }
 
         for (Map.Entry<Long, Integer> entry : quantitesParProduit.entrySet()) {
@@ -802,6 +808,42 @@ public class VenteServiceImpl implements VenteService {
                         ". Disponible: " + produit.getQuantite() + ", Demandé: " + entry.getValue());
             }
         }
+
+        // Lignes avec niveauId : vérification stock cascade par niveau
+        for (LigneVenteRequest ligne : request.getLignes()) {
+            if (ligne.getNiveauId() != null) {
+                Produit produit = produitRepository.findById(ligne.getProduitId())
+                        .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + ligne.getProduitId()));
+                List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(ligne.getProduitId());
+                ProduitNiveau niveau = niveaux.stream()
+                        .filter(n -> n.getId().equals(ligne.getNiveauId()))
+                        .findFirst()
+                        .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + ligne.getNiveauId()));
+                long disponible = calculerDisponibleNiveau(niveau, niveaux, produit);
+                if (disponible < ligne.getQuantite()) {
+                    throw new StockInsuffisantException("Stock insuffisant pour " + produit.getNom() +
+                            " - niveau " + niveau.getNom() + ". Disponible: " + disponible + ", Demandé: " + ligne.getQuantite());
+                }
+            }
+        }
+    }
+
+    private long calculerDisponibleNiveau(ProduitNiveau niveau, List<ProduitNiveau> sortedNiveaux, Produit produit) {
+        int idx = -1;
+        for (int i = 0; i < sortedNiveaux.size(); i++) {
+            if (sortedNiveaux.get(i).getId().equals(niveau.getId())) { idx = i; break; }
+        }
+        long direct = niveau.getStock() != null ? niveau.getStock() : 0L;
+        if (idx == 0) {
+            // Parent direct = produit (ex: stock de Cartons)
+            long produitQte = produit.getQuantite() != null ? produit.getQuantite() : 0L;
+            return direct + produitQte * niveau.getFacteur();
+        } else {
+            // Parent direct uniquement — jamais de saut de 2 niveaux ou plus
+            ProduitNiveau parent = sortedNiveaux.get(idx - 1);
+            long parentStock = parent.getStock() != null ? parent.getStock() : 0L;
+            return direct + parentStock * niveau.getFacteur();
+        }
     }
 
     private LigneVente creerLigneVente(LigneVenteRequest ligneRequest) {
@@ -811,6 +853,7 @@ public class VenteServiceImpl implements VenteService {
         LigneVente ligne = new LigneVente();
         ligne.setProduit(produit);
         ligne.setQuantite(ligneRequest.getQuantite());
+        ligne.setNiveauId(ligneRequest.getNiveauId()); // ID du niveau vendu (cascade stock)
         // Utilise le prix achat du niveau (conditionnement) si fourni, sinon prix achat du produit
         Double prixAchatEffectif = (ligneRequest.getPrixAchat() != null && ligneRequest.getPrixAchat() > 0)
                 ? ligneRequest.getPrixAchat()
@@ -882,11 +925,69 @@ public class VenteServiceImpl implements VenteService {
     private void mettreAJourStockVente(Vente vente) {
         for (LigneVente ligne : vente.getLignes()) {
             Long produitId = ligne.getProduit().getId();
-            int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
-            inventaireService.sortieStock(produitId, ligne.getQuantite() * facteur,
-                    vente.getVendeur().getId(), "Vente N°" + vente.getNumeroVente());
+
+            if (ligne.getNiveauId() == null) {
+                // Vente au niveau produit : déduction directe du stock produit
+                int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
+                inventaireService.sortieStock(produitId, ligne.getQuantite() * facteur,
+                        vente.getVendeur().getId(), "Vente N°" + vente.getNumeroVente());
+            } else {
+                // Vente par niveau : déduction cascade
+                Produit produit = produitRepository.findById(produitId)
+                        .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + produitId));
+                List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+                ProduitNiveau niveauVendu = niveaux.stream()
+                        .filter(n -> n.getId().equals(ligne.getNiveauId()))
+                        .findFirst()
+                        .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + ligne.getNiveauId()));
+
+                for (int i = 0; i < ligne.getQuantite(); i++) {
+                    deductUniteNiveauCascade(produit, niveaux, niveauVendu);
+                }
+                produitRepository.save(produit);
+                niveauRepository.saveAll(niveaux);
+            }
+
             produitRepository.findById(produitId).ifPresent(p ->
                     notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite()));
+        }
+    }
+
+    private void deductUniteNiveauCascade(Produit produit, List<ProduitNiveau> sortedNiveaux, ProduitNiveau target) {
+        int stock = target.getStock() != null ? target.getStock() : 0;
+
+        if (stock > 0) {
+            target.setStock(stock - 1);
+            return;
+        }
+
+        // Stock épuisé → un seul cran vers le parent direct (jamais saut de 2 niveaux)
+        int idx = -1;
+        for (int i = 0; i < sortedNiveaux.size(); i++) {
+            if (sortedNiveaux.get(i).getId().equals(target.getId())) { idx = i; break; }
+        }
+
+        if (idx == 0) {
+            // Parent direct = produit (ex: Cartons)
+            if (produit.getQuantite() == null || produit.getQuantite() < 1) {
+                throw new StockInsuffisantException("Stock " + produit.getNom() +
+                        " insuffisant pour décomposer en " + target.getNom());
+            }
+            produit.setQuantite(produit.getQuantite() - 1);
+            target.setStock(target.getFacteur() - 1);
+        } else {
+            // Parent direct = niveau supérieur immédiat
+            ProduitNiveau parent = sortedNiveaux.get(idx - 1);
+            int parentStock = parent.getStock() != null ? parent.getStock() : 0;
+            if (parentStock < 1) {
+                // Pas de remontée automatique — l'utilisateur doit décomposer manuellement
+                String grandParentNom = (idx == 1) ? produit.getNom() : sortedNiveaux.get(idx - 2).getNom();
+                throw new StockInsuffisantException("Stock " + parent.getNom() +
+                        " épuisé. Décomposez d'abord " + grandParentNom + " → " + parent.getNom() +
+                        " avant de vendre en " + target.getNom());
+            }
+            parent.setStock(parentStock - 1);
+            target.setStock(target.getFacteur() - 1);
         }
     }
 
@@ -974,9 +1075,19 @@ public class VenteServiceImpl implements VenteService {
 
     private void retablirStockAncienneVente(Vente vente) {
         for (LigneVente ligne : vente.getLignes()) {
-            int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
-            inventaireService.entreeStock(ligne.getProduit().getId(), ligne.getQuantite() * facteur,
-                    vente.getVendeur().getId(), "Annulation vente N°" + vente.getNumeroVente());
+            if (ligne.getNiveauId() == null) {
+                // Remise directe sur le stock produit
+                int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
+                inventaireService.entreeStock(ligne.getProduit().getId(), ligne.getQuantite() * facteur,
+                        vente.getVendeur().getId(), "Annulation vente N°" + vente.getNumeroVente());
+            } else {
+                // Remise sur le stock du niveau (pas de remballage automatique)
+                niveauRepository.findById(ligne.getNiveauId()).ifPresent(niveau -> {
+                    int stockActuel = niveau.getStock() != null ? niveau.getStock() : 0;
+                    niveau.setStock(stockActuel + ligne.getQuantite());
+                    niveauRepository.save(niveau);
+                });
+            }
         }
     }
 }

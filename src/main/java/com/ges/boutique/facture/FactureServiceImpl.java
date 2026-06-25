@@ -64,19 +64,31 @@ public class FactureServiceImpl implements FactureService {
         }
 
         for (LigneFactureRequest ligneReq : request.getLignes()) {
-            Produit produit = produitRepository.findById(ligneReq.getProduitId())
-                    .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
-
             LigneFacture ligne = new LigneFacture();
-            ligne.setProduit(produit);
-            ligne.setQuantite(ligneReq.getQuantite());
-            ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : produit.getNom());
-            ligne.setDescription(ligneReq.getDescription());
-            ligne.setPrixAchat(produit.getPrixAchat());
 
-            Double prixFinal = ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : produit.getPrixVente();
-            ligne.setPrixUnitaire(prixFinal);
-            ligne.setPrixOriginalProduit(produit.getPrixVente());
+            if (ligneReq.getProduitId() != null) {
+                Produit produit = produitRepository.findById(ligneReq.getProduitId()).orElse(null);
+                if (produit != null) {
+                    ligne.setProduit(produit);
+                    ligne.setPrixAchat(produit.getPrixAchat());
+                    ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : produit.getNom());
+                    ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : produit.getPrixVente());
+                    ligne.setPrixOriginalProduit(produit.getPrixVente());
+                } else {
+                    ligne.setProduit(null);
+                    ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : "Article");
+                    ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : 0.0);
+                    ligne.setPrixAchat(0.0);
+                }
+            } else {
+                ligne.setProduit(null);
+                ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : "Article");
+                ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : 0.0);
+                ligne.setPrixAchat(0.0);
+            }
+
+            ligne.setQuantite(ligneReq.getQuantite());
+            ligne.setDescription(ligneReq.getDescription());
 
             if (ligneReq.getRemisePourcentage() != null && ligneReq.getRemisePourcentage() > 0) {
                 ligne.appliquerRemisePourcentage(ligneReq.getRemisePourcentage());
@@ -163,6 +175,12 @@ public class FactureServiceImpl implements FactureService {
         Facture facture = factureRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Facture non trouvée: " + id));
         return wrapFactureWithBoutique(facture);
+    }
+
+    @Override
+    public Facture obtenirFactureEntite(Long id) {
+        return factureRepository.findById(id)
+                .orElseThrow(() -> new RessourceIntrouvableException("Facture non trouvée: " + id));
     }
 
     @Override
@@ -299,17 +317,31 @@ public class FactureServiceImpl implements FactureService {
         facture.getLignes().clear();
 
         for (LigneFactureRequest ligneReq : request.getLignes()) {
-            Produit produit = produitRepository.findById(ligneReq.getProduitId())
-                    .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
-
             LigneFacture ligne = new LigneFacture();
-            ligne.setProduit(produit);
+
+            if (ligneReq.getProduitId() != null) {
+                Produit produit = produitRepository.findById(ligneReq.getProduitId()).orElse(null);
+                if (produit != null) {
+                    ligne.setProduit(produit);
+                    ligne.setPrixAchat(produit.getPrixAchat());
+                    ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : produit.getNom());
+                    ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : produit.getPrixVente());
+                    ligne.setPrixOriginalProduit(produit.getPrixVente());
+                } else {
+                    ligne.setProduit(null);
+                    ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : "Article");
+                    ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : 0.0);
+                    ligne.setPrixAchat(0.0);
+                }
+            } else {
+                ligne.setProduit(null);
+                ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : "Article");
+                ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : 0.0);
+                ligne.setPrixAchat(0.0);
+            }
+
             ligne.setQuantite(ligneReq.getQuantite());
-            ligne.setDesignation(ligneReq.getDesignation() != null ? ligneReq.getDesignation() : produit.getNom());
             ligne.setDescription(ligneReq.getDescription());
-            ligne.setPrixAchat(produit.getPrixAchat());
-            ligne.setPrixUnitaire(ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : produit.getPrixVente());
-            ligne.setPrixOriginalProduit(produit.getPrixVente());
 
             if (ligneReq.getRemisePourcentage() != null && ligneReq.getRemisePourcentage() > 0) {
                 ligne.appliquerRemisePourcentage(ligneReq.getRemisePourcentage());

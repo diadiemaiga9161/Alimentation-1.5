@@ -1,11 +1,16 @@
 package com.ges.boutique.produit;
 
+import com.ges.boutique.config.NotificationService;
+import com.ges.boutique.notification.NotificationPersistanceService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.fournisseur.Fournisseur;
 import com.ges.boutique.fournisseur.FournisseurDto;
 import com.ges.boutique.fournisseur.FournisseurRepository;
 import com.ges.boutique.fournisseur.FournisseurRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,9 +30,12 @@ public class ProduitServiceImpl implements ProduitService {
     private final CategorieRepository categorieRepository;
     private final FournisseurRepository fournisseurRepository;
     private final ExcelImportService excelImportService;
+    private final NotificationService notificationService;
+    private final NotificationPersistanceService notifPersistance;
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Produit creerProduit(ProduitRequest request) {
         validerProduitRequest(request);
 
@@ -63,11 +71,16 @@ public class ProduitServiceImpl implements ProduitService {
             produit.setFournisseur(fournisseur);
         }
 
-        return produitRepository.save(produit);
+        Produit saved = produitRepository.save(produit);
+        notificationService.notifierMiseAJourStock(saved.getId(), saved.getNom(), saved.getQuantite());
+        notificationService.notifierMiseAJourDashboard();
+        verifierAlertesStock(saved);
+        return saved;
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public Produit modifierProduit(Long id, ProduitRequest request) {
         Produit produit = produitRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé avec l'ID: " + id));
@@ -159,17 +172,30 @@ public class ProduitServiceImpl implements ProduitService {
             produit.setTypeVente(request.getTypeVente());
         }
 
-        return produitRepository.save(produit);
+        Produit saved = produitRepository.save(produit);
+        notificationService.notifierMiseAJourStock(saved.getId(), saved.getNom(), saved.getQuantite());
+        verifierAlertesStock(saved);
+        return saved;
+    }
+
+    private void verifierAlertesStock(Produit p) {
+        if (p.getQuantite() == 0) {
+            notifPersistance.ruptureStock(p.getId(), p.getNom());
+        } else if (p.estStockFaible()) {
+            notifPersistance.stockFaible(p.getId(), p.getNom(), p.getQuantite(), p.getSeuilAlerte());
+        }
     }
 
     @Override
     @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
     public void supprimerProduit(Long id) {
         Produit produit = produitRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé avec l'ID: " + id));
         if (produitRepository.countLignesVenteByProduitId(id) > 0) {
             throw new IllegalStateException("Impossible de supprimer un produit deja utilise dans des ventes");
         }
+        notificationService.notifierMiseAJourDashboard();
         produitRepository.delete(produit);
     }
 
@@ -180,6 +206,7 @@ public class ProduitServiceImpl implements ProduitService {
     }
 
     @Override
+    @Cacheable("produits")
     public List<Produit> obtenirTousLesProduits() {
         return produitRepository.findAll();
     }
@@ -388,6 +415,7 @@ public class ProduitServiceImpl implements ProduitService {
     }
 
     @Override
+    @Cacheable("fournisseurs")
     public List<Fournisseur> obtenirTousLesFournisseurs() {
         return fournisseurRepository.findAll();
     }

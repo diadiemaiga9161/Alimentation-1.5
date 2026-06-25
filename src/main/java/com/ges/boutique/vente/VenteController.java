@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -28,13 +30,31 @@ public class VenteController {
     private final VenteMapper venteMapper;
     private final UtilisateurMapper utilisateurMapper;
     private final CaisseService caisseService;
+    private final VenteRepository venteRepository;
 
     // ==================== CRÉATION ====================
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Créer une vente (comptant)")
-    public ResponseEntity<Map<String, Object>> creerVente(@RequestBody VenteRequest request) {
+    public ResponseEntity<Map<String, Object>> creerVente(
+            @RequestBody VenteRequest request,
+            @RequestHeader(value = "X-Client-Request-ID", required = false) String clientRequestId) {
+
+        // Idempotence : si une vente avec ce clientRequestId existe déjà, on la retourne
+        if (clientRequestId != null && !clientRequestId.isBlank()) {
+            Optional<Vente> existing = venteRepository.findByClientRequestId(clientRequestId);
+            if (existing.isPresent()) {
+                log.info("Vente déjà créée pour clientRequestId={}, retour sans doublon", clientRequestId);
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("message", "Vente déjà enregistrée");
+                response.put("vente", venteMapper.toVenteMap(existing.get()));
+                return ResponseEntity.ok(response);
+            }
+            request.setClientRequestId(clientRequestId);
+        }
+
         Vente vente = venteService.creerVente(request);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -46,7 +66,24 @@ public class VenteController {
     @PostMapping("/credit")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Créer une vente à crédit")
-    public ResponseEntity<Map<String, Object>> creerVenteCredit(@RequestBody VenteCreditRequest request) {
+    public ResponseEntity<Map<String, Object>> creerVenteCredit(
+            @RequestBody VenteCreditRequest request,
+            @RequestHeader(value = "X-Client-Request-ID", required = false) String clientRequestId) {
+
+        // Idempotence : si un crédit avec ce clientRequestId existe déjà, on le retourne
+        if (clientRequestId != null && !clientRequestId.isBlank()) {
+            Optional<Vente> existing = venteRepository.findByClientRequestId(clientRequestId);
+            if (existing.isPresent()) {
+                log.info("Crédit déjà créé pour clientRequestId={}, retour sans doublon", clientRequestId);
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("message", "Crédit déjà enregistré");
+                response.put("vente", venteMapper.toVenteMap(existing.get()));
+                return ResponseEntity.ok(response);
+            }
+            request.setClientRequestId(clientRequestId);
+        }
+
         Vente vente = venteService.creerVenteCredit(request);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -174,6 +211,18 @@ public class VenteController {
     public ResponseEntity<Map<String, Object>> modifierVenteCredit(@PathVariable Long venteId, @RequestBody VenteCreditRequest request) {
         Vente vente = venteService.modifierVenteCredit(venteId, request);
         return ResponseEntity.ok(venteMapper.toVenteMap(vente));
+    }
+
+    @PutMapping("/{venteId}/modifier-lignes")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Modifier les produits d'une vente avec ajustement de caisse (différence entree/sortie)")
+    public ResponseEntity<Map<String, Object>> modifierLignesVente(
+            @PathVariable Long venteId,
+            @RequestBody ModificationLignesRequest request) {
+        Map<String, Object> result = venteService.modifierLignesVente(venteId, request);
+        result.put("success", true);
+        result.put("message", "Vente modifiée avec succès");
+        return ResponseEntity.ok(result);
     }
 
     // ==================== REMISES ====================

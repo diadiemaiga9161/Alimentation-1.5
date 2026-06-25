@@ -9,4 +9,5 @@ public class ProduitNiveauRequest {
     private Integer facteur;
     private Double prixAchat;
     private Double prixVente;
+    private Integer stock;
 }

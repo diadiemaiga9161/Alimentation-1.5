@@ -6,28 +6,16 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class HomeController {
 
-    /**
-     * Version simple - laisse Spring Boot gérer les fichiers statiques
-     * et ne redirige que les routes principales
-     */
-    @GetMapping({"/", "/home"})
+    // Sert index.html pour toutes les routes Angular (SPA deep links)
+    // Le pattern [^\\.]*  exclut les chemins avec extension (fichiers statiques)
+    @GetMapping(value = {
+        "/",
+        "/{path:(?!ws$)[^\\.]*}",
+        "/{p1:(?!ws$)[^\\.]*}/{path:[^\\.]*}",
+        "/{p1:(?!ws$)[^\\.]*}/{p2:[^\\.]*}/{path:[^\\.]*}",
+        "/{p1:(?!ws$)[^\\.]*}/{p2:[^\\.]*}/{p3:[^\\.]*}/{path:[^\\.]*}"
+    })
     public String index() {
-        return "forward:/index.html";
-    }
-
-    @GetMapping({
-            "/login", "/register", "/connexion", "/inscription",
-            "/dashboard", "/profile", "/settings"
-    })
-    public String authRoutes() {
-        return "forward:/index.html";
-    }
-
-    @GetMapping({
-            "/produit", "/client", "/commande", "/categorie",
-            "/vente", "/inventaire", "/rapport", "/pages"
-    })
-    public String appRoutes() {
         return "forward:/index.html";
     }
 }

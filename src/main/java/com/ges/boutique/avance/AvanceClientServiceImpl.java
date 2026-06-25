@@ -95,4 +95,30 @@ public class AvanceClientServiceImpl implements AvanceClientService {
 
         log.info("Avance utilisée : {} F pour le client {}", montantAUtiliser, clientNom);
     }
+
+    @Override
+    @Transactional
+    public void remettreAvance(String clientNom, Double montantARestituer) {
+        if (montantARestituer == null || montantARestituer <= 0) return;
+
+        List<AvanceClient> avancesUtilisees = avanceRepository.findAvancesUtiliseesByNom(clientNom.trim());
+        double reste = montantARestituer;
+
+        for (AvanceClient avance : avancesUtilisees) {
+            if (reste <= 0) break;
+            double aRestituer = Math.min(avance.getMontantUtilise(), reste);
+            avance.setMontantUtilise(avance.getMontantUtilise() - aRestituer);
+            avance.setMontantDisponible(avance.getMontantDisponible() + aRestituer);
+            reste -= aRestituer;
+
+            if (avance.getMontantDisponible() >= avance.getMontant()) {
+                avance.setStatut(StatutAvance.DISPONIBLE);
+            } else if (avance.getMontantDisponible() > 0) {
+                avance.setStatut(StatutAvance.UTILISE_PARTIELLEMENT);
+            }
+            avanceRepository.save(avance);
+        }
+
+        log.info("Avance restituée : {} F pour le client {}", montantARestituer, clientNom);
+    }
 }

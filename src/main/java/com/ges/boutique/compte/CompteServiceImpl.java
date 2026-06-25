@@ -70,16 +70,19 @@ public class CompteServiceImpl implements CompteService {
     public OperationCompte enregistrerOperation(OperationCompteRequest request) {
         Compte compte = getCompteById(request.getCompteId());
 
-        if (isDebit(request.getType()) && compte.getSoldeActuel() < request.getMontant() - 0.01) {
+        // Convertir l'enum en String
+        String typeString = request.getType().toString();
+
+        if (isDebit(typeString) && compte.getSoldeActuel() < request.getMontant() - 0.01) {
             throw new SoldeInsuffisantException("Solde bancaire insuffisant. Disponible: " + compte.getSoldeActuel());
         }
 
         double soldeAvant = compte.getSoldeActuel();
-        appliquerOperation(compte, request.getType(), request.getMontant());
+        appliquerOperation(compte, typeString, request.getMontant());
         compte.recalculerSolde();
         compteRepository.save(compte);
 
-        OperationCompte op = buildOperation(compte, request.getType(), request.getMontant(),
+        OperationCompte op = buildOperation(compte, typeString, request.getMontant(),
                 soldeAvant, compte.getSoldeActuel(), request.getMotif(), request.getReference(), request.getUtilisateurId());
         return operationCompteRepository.save(op);
     }
@@ -91,7 +94,7 @@ public class CompteServiceImpl implements CompteService {
 
     @Override
     @Transactional
-    public void debiterCompte(Long compteId, Double montant, String motif, TypeOperationCompte type, Long utilisateurId) {
+    public void debiterCompte(Long compteId, Double montant, String motif, String type, Long utilisateurId) {
         Compte compte = getCompteById(compteId);
         if (compte.getSoldeActuel() < montant - 0.01) {
             throw new SoldeInsuffisantException(
@@ -107,7 +110,7 @@ public class CompteServiceImpl implements CompteService {
 
     @Override
     @Transactional
-    public void crediterCompte(Long compteId, Double montant, String motif, TypeOperationCompte type, Long utilisateurId) {
+    public void crediterCompte(Long compteId, Double montant, String motif, String type, Long utilisateurId) {
         Compte compte = getCompteById(compteId);
         double soldeAvant = compte.getSoldeActuel();
         appliquerOperation(compte, type, montant);
@@ -117,26 +120,56 @@ public class CompteServiceImpl implements CompteService {
         log.info("Crédit compte {}: {} F - {}", compte.getNomBanque(), montant, motif);
     }
 
-    private boolean isDebit(TypeOperationCompte type) {
+    // ========== MÉTHODES PRIVÉES ==========
+
+    private boolean isDebit(String type) {
         return switch (type) {
-            case RETRAIT, CHEQUE, FRAIS, BON_CAISSE, PAIEMENT_FOURNISSEUR, AVANCE_FOURNISSEUR -> true;
+            case "RETRAIT", "CHEQUE", "FRAIS", "BON_CAISSE", "PAIEMENT_FOURNISSEUR", "AVANCE_FOURNISSEUR" -> true;
+            case "VERSEMENT", "REMBOURSEMENT_ACHAT", "VIREMENT_CAISSE" -> false;
             default -> false;
         };
     }
 
-    private void appliquerOperation(Compte compte, TypeOperationCompte type, Double montant) {
+    private void appliquerOperation(Compte compte, String type, Double montant) {
         switch (type) {
-            case VERSEMENT -> compte.setTotalVersements(compte.getTotalVersements() + montant);
-            case RETRAIT -> compte.setTotalRetraits(compte.getTotalRetraits() + montant);
-            case CHEQUE -> compte.setTotalCheques(compte.getTotalCheques() + montant);
-            case FRAIS -> compte.setTotalFrais(compte.getTotalFrais() + montant);
-            case BON_CAISSE -> compte.setTotalBonsCaisse(compte.getTotalBonsCaisse() + montant);
-            case PAIEMENT_FOURNISSEUR, AVANCE_FOURNISSEUR -> compte.setTotalRetraits(compte.getTotalRetraits() + montant);
+            case "VERSEMENT" -> {
+                compte.setTotalVersements(compte.getTotalVersements() + montant);
+                log.info("💰 VERSEMENT: +{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "RETRAIT" -> {
+                compte.setTotalRetraits(compte.getTotalRetraits() + montant);
+                log.info("💳 RETRAIT: -{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "CHEQUE" -> {
+                compte.setTotalCheques(compte.getTotalCheques() + montant);
+                log.info("📝 CHÈQUE: -{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "FRAIS" -> {
+                compte.setTotalFrais(compte.getTotalFrais() + montant);
+                log.info("⚠️ FRAIS: -{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "BON_CAISSE" -> {
+                compte.setTotalBonsCaisse(compte.getTotalBonsCaisse() + montant);
+                log.info("🎫 BON CAISSE: -{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "PAIEMENT_FOURNISSEUR", "AVANCE_FOURNISSEUR" -> {
+                compte.setTotalRetraits(compte.getTotalRetraits() + montant);
+                log.info("🏦 PAIEMENT FOURNISSEUR/AVANCE: -{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "REMBOURSEMENT_ACHAT" -> {
+                compte.setTotalVersements(compte.getTotalVersements() + montant);
+                log.info("🔄 REMBOURSEMENT ACHAT: +{} F sur {}", montant, compte.getNomBanque());
+            }
+            case "VIREMENT_CAISSE" -> {
+                compte.setTotalVersements(compte.getTotalVersements() + montant);
+                log.info("🏦 VIREMENT CAISSE: +{} F sur {} (versement depuis caisse)", montant, compte.getNomBanque());
+            }
+            default -> log.warn("Type d'opération inconnu: {}", type);
         }
     }
 
-    private OperationCompte buildOperation(Compte compte, TypeOperationCompte type, Double montant,
-                                            double soldeAvant, double soldeApres, String motif, String reference, Long utilisateurId) {
+    private OperationCompte buildOperation(Compte compte, String type, Double montant,
+                                           double soldeAvant, double soldeApres, String motif, String reference, Long utilisateurId) {
         OperationCompte op = new OperationCompte();
         op.setCompte(compte);
         op.setType(type);

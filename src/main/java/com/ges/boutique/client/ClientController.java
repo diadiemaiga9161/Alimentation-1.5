@@ -1,9 +1,14 @@
 package com.ges.boutique.client;
 
+import com.ges.boutique.email.QrCodeService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +22,11 @@ import java.util.Optional;
 public class ClientController {
 
     private final ClientService clientService;
+    private final ClientReleveService clientReleveService;
+    private final QrCodeService qrCodeService;
+
+    @Value("${app.base-url:http://localhost:8080}")
+    private String baseUrl;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -126,5 +136,35 @@ public class ClientController {
         response.put("success", true);
         response.put("topClients", topClients);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/releve-pdf")
+    public ResponseEntity<byte[]> telechargerReleve(@PathVariable Long id) {
+        try {
+            byte[] pdf = clientReleveService.genererReleve(id);
+            Client client = clientService.trouverParId(id)
+                    .orElseThrow(() -> new RuntimeException("Client introuvable"));
+            String nomComplet = (client.getNom() + " " + client.getPrenom()).trim();
+            String nomFichier = "releve-" + nomComplet.replaceAll("[^a-zA-Z0-9]", "-") + ".pdf";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", nomFichier);
+            return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/{id}/qrcode")
+    public ResponseEntity<byte[]> obtenirQrCode(@PathVariable Long id) {
+        try {
+            String url = baseUrl + "/api/clients/" + id + "/releve-pdf";
+            byte[] qr = qrCodeService.genererQrCode(url, 250, 250);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.IMAGE_PNG);
+            return new ResponseEntity<>(qr, headers, HttpStatus.OK);
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }

@@ -37,11 +37,11 @@ public interface CaisseService {
     OperationCaisse annulerVente(Vente vente, Long utilisateurId, String motif);
     OperationCaisse annulerVenteCredit(Vente vente, Long utilisateurId, String motif);
 
-    // NOUVELLES MÉTHODES POUR LES ANNULATIONS AVEC RÉPERCUSSION CAISSE
+    // Méthodes pour les annulations avec répercussion caisse
     OperationCaisse annulerVenteAvecRepercussion(Vente vente, Long utilisateurId, String motif);
     OperationCaisse annulerVenteCreditAvecRepercussion(Vente vente, Long utilisateurId, String motif);
 
-    // Gestion des crédits - MODIFIÉ pour exclure les annulés
+    // Gestion des crédits
     List<OperationCaisse> getCreditsNonRegles();
     List<OperationCaisse> getCreditsEnRetard();
     Map<String, Object> getSituationCredits();
@@ -89,6 +89,21 @@ public interface CaisseService {
     Facture annulerFacture(Long factureId);
     Map<String, Object> getStatistiquesFactures();
 
+    // Transfert bancaire
+    Map<String, Object> transfererVersBanque(TransfertCaisseBanqueRequest request);
 
+    // Paiements fournisseurs et avances
+    OperationCaisse sortieCaisseFournisseur(Double montant, String motif, Long utilisateurId);
+    OperationCaisse sortieCaisseAvance(Double montant, String motif, Long utilisateurId);
 
+    // NOUVELLE METHODE POUR REMBOURSEMENT RETOUR
+    OperationCaisse sortieCaisseRemboursementRetour(Double montant, String motif, Long utilisateurId);
+
+    // Paiements employés
+    OperationCaisse sortieCaisseEmploye(Double montant, String motif, Long utilisateurId);
+    OperationCaisse retourCaisseEmploye(Double montant, String motif, Long utilisateurId);
+
+    // Dépenses
+    OperationCaisse sortieCaisseDepense(Double montant, String motif, Long utilisateurId);
+    OperationCaisse entreeCaisseDepense(Double montant, String motif, Long utilisateurId);
 }

@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -171,6 +172,69 @@ public class GlobalExceptionHandler {
         );
         body.put(ERRORS, errors);
         body.put(ERROR_CODE, "CONSTRAINT_VIOLATION");
+
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handle illegal argument exceptions (validation métier)
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(
+            IllegalArgumentException ex,
+            WebRequest request) {
+
+        log.warn("Illegal argument: {}", ex.getMessage());
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.BAD_REQUEST,
+                "Bad Request",
+                ex.getMessage(),
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "INVALID_ARGUMENT");
+
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handle illegal state exceptions (caisse fermée, employé inactif, etc.)
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(
+            IllegalStateException ex,
+            WebRequest request) {
+
+        log.warn("Illegal state: {}", ex.getMessage());
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.BAD_REQUEST,
+                "Bad Request",
+                ex.getMessage(),
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "ILLEGAL_STATE");
+
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handle insufficient balance exception
+     */
+    @ExceptionHandler(SoldeInsuffisantException.class)
+    public ResponseEntity<Map<String, Object>> handleSoldeInsuffisant(
+            SoldeInsuffisantException ex,
+            WebRequest request) {
+
+        log.warn("Solde insuffisant: {}", ex.getMessage());
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.BAD_REQUEST,
+                "Solde Insuffisant",
+                ex.getMessage(),
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "SOLDE_INSUFFISANT");
 
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
@@ -412,6 +476,25 @@ public class GlobalExceptionHandler {
         body.put(ERROR_CODE, "TYPE_MISMATCH");
 
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handle missing static resources (Angular chunks, CSS, etc.) - retourne 404 pas 500
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(
+            NoResourceFoundException ex,
+            WebRequest request) {
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.NOT_FOUND,
+                "Not Found",
+                "Ressource statique introuvable : " + ex.getResourcePath(),
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "STATIC_RESOURCE_NOT_FOUND");
+
+        return new ResponseEntity<>(body, HttpStatus.NOT_FOUND);
     }
 
     /**

@@ -2,6 +2,7 @@ package com.ges.boutique.config;
 
 import com.ges.boutique.securite.JwtFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -16,6 +17,11 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -26,13 +32,14 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
 
+    @Value("${cors.allowed-origins:*}")
+    private String allowedOriginsStr;
+
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-
         provider.setUserDetailsService(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder);
-
         return provider;
     }
 
@@ -46,71 +53,74 @@ public class SecurityConfig {
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configure(http))
 
                 .authorizeHttpRequests(auth -> auth
 
-                        // Page Angular
-                        .requestMatchers(
-                                "/",
-                                "/index.html",
-                                "/favicon.ico"
-                        ).permitAll()
+                        // CORS preflight — toujours en premier
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Dossiers Angular
-                        .requestMatchers(
-                                "/assets/**",
-                                "/media/**",
-                                "/fonts/**",
-                                "/icons/**",
-                                "/images/**"
-                        ).permitAll()
+                        // WebSocket STOMP
+                        .requestMatchers("/ws/**").permitAll()
 
-                        // Fichiers Angular à la racine
-                        .requestMatchers(
-                                "/*.js",
-                                "/*.css",
-                                "/*.ico",
-                                "/*.png",
-                                "/*.jpg",
-                                "/*.jpeg",
-                                "/*.gif",
-                                "/*.svg",
-                                "/*.webp",
-                                "/*.avif",
-                                "/*.woff",
-                                "/*.woff2",
-                                "/*.ttf",
-                                "/*.eot",
-                                "/*.otf",
-                                "/*.map",
-                                "/*.json"
-                        ).permitAll()
+                        // Auth publique
+                        .requestMatchers("/api/auth/**", "/api/login", "/api/register").permitAll()
+
+                        // Transfert inter-boutiques — appelé par RestTemplate sans token
+                        .requestMatchers(HttpMethod.POST, "/api/transferts/recevoir").permitAll()
+
+                        // PDF + QR code facture — accessibles via scan QR code sans authentification
+                        .requestMatchers(HttpMethod.GET, "/api/caisse/factures/*/pdf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/caisse/factures/*/pdf/view").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/caisse/factures/*/qrcode").permitAll()
+
+                        // Relevé client PDF + QR code — public (client scanne sans être connecté)
+                        .requestMatchers(HttpMethod.GET, "/api/clients/*/releve-pdf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/clients/*/qrcode").permitAll()
 
                         // Swagger
                         .requestMatchers(
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/api-docs/**",
-                                "/v3/api-docs/**"
+                                "/swagger-ui/**", "/swagger-ui.html",
+                                "/api-docs/**", "/v3/api-docs/**"
                         ).permitAll()
 
-                        // Routes publiques pour auth
-                        .requestMatchers(
-                                "/api/auth/**",
-                                "/api/login",
-                                "/api/register"
-                        ).permitAll()
+                        // Ventes — rôles spécifiques
+                        .requestMatchers(HttpMethod.GET, "/api/ventes/**").hasAnyRole("ADMIN", "VENDEUR")
+                        .requestMatchers(HttpMethod.POST, "/api/ventes/**").hasAnyRole("ADMIN", "VENDEUR")
+                        .requestMatchers(HttpMethod.PUT, "/api/ventes/**").hasAnyRole("ADMIN", "VENDEUR")
+                        .requestMatchers(HttpMethod.PUT, "/api/ventes/*/modifier-lignes").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/ventes/**").hasRole("ADMIN")
+                        .requestMatchers("/api/retours-ventes/**").hasAnyRole("ADMIN", "VENDEUR")
 
-                        // CORS preflight
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Toutes les autres routes API → authentification obligatoire
+                        .requestMatchers("/api/**").authenticated()
 
-                        // Toutes les autres routes restent protégées
-                        .anyRequest().authenticated()
+                        // Tout le reste = fichiers Angular/Ionic (JS, CSS, HTML, assets...) → public
+                        .anyRequest().permitAll()
                 )
 
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        // Lit depuis application-boutique*.properties (cors.allowed-origins)
+        // allowedOriginPatterns("*") accepte tous les origines + fonctionne avec credentials
+        List<String> origins = Arrays.asList(allowedOriginsStr.split(","));
+        config.setAllowedOriginPatterns(origins);
+
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

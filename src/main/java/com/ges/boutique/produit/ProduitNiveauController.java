@@ -4,6 +4,7 @@ import com.ges.boutique.exception.RessourceIntrouvableException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -61,6 +62,7 @@ public class ProduitNiveauController {
         if (request.getFacteur() != null) niveau.setFacteur(request.getFacteur());
         if (request.getPrixAchat() != null) niveau.setPrixAchat(request.getPrixAchat());
         if (request.getPrixVente() != null) niveau.setPrixVente(request.getPrixVente());
+        if (request.getStock() != null) niveau.setStock(request.getStock());
         ProduitNiveau saved = niveauRepository.save(niveau);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -77,6 +79,79 @@ public class ProduitNiveauController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Niveau supprimé");
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/niveaux/{id}/stock")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> ajusterStock(
+            @PathVariable Long id,
+            @RequestBody Map<String, Integer> body) {
+        ProduitNiveau niveau = niveauRepository.findById(id)
+                .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + id));
+        Integer newStock = body.get("stock");
+        if (newStock == null || newStock < 0) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Stock invalide"));
+        }
+        niveau.setStock(newStock);
+        ProduitNiveau saved = niveauRepository.save(niveau);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("niveau", saved);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/niveaux/{id}/decomposer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> decomposer(@PathVariable Long id) {
+        ProduitNiveau target = niveauRepository.findById(id)
+                .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + id));
+
+        Produit produit = target.getProduit();
+        List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+
+        int idx = -1;
+        for (int i = 0; i < niveaux.size(); i++) {
+            if (niveaux.get(i).getId().equals(id)) { idx = i; break; }
+        }
+
+        if (idx == 0) {
+            // Parent direct = produit
+            if (produit.getQuantite() == null || produit.getQuantite() < 1) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Stock " + produit.getNom() + " insuffisant pour décomposer en " + target.getNom()
+                ));
+            }
+            produit.setQuantite(produit.getQuantite() - 1);
+            produitRepository.save(produit);
+        } else {
+            // Parent direct = niveau supérieur immédiat uniquement
+            ProduitNiveau parent = niveaux.get(idx - 1);
+            int parentStock = parent.getStock() != null ? parent.getStock() : 0;
+            if (parentStock < 1) {
+                String grandParentNom = (idx == 1) ? produit.getNom() : niveaux.get(idx - 2).getNom();
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Stock " + parent.getNom() + " épuisé. Décomposez d'abord " +
+                                grandParentNom + " → " + parent.getNom()
+                ));
+            }
+            parent.setStock(parentStock - 1);
+            niveauRepository.save(parent);
+        }
+
+        int newStock = (target.getStock() != null ? target.getStock() : 0) + target.getFacteur();
+        target.setStock(newStock);
+        niveauRepository.save(target);
+
+        List<ProduitNiveau> updatedNiveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Décomposition effectuée : 1 " + (idx == 0 ? produit.getNom() : niveaux.get(idx - 1).getNom()) + " → " + target.getFacteur() + " " + target.getNom());
+        response.put("niveaux", updatedNiveaux);
+        response.put("produitQuantite", produit.getQuantite());
         return ResponseEntity.ok(response);
     }
 

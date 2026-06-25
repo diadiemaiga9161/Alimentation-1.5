@@ -1,9 +1,15 @@
 package com.ges.boutique.caisse;
 
+import com.ges.boutique.config.NotificationService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.SoldeInsuffisantException;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
+import com.ges.boutique.compte.Compte;
+import com.ges.boutique.compte.CompteRepository;
+import com.ges.boutique.compte.OperationCompte;
+import com.ges.boutique.compte.OperationCompteRepository;
+import com.ges.boutique.compte.TypeOperationCompte;
 import com.ges.boutique.facture.Facture;
 import com.ges.boutique.facture.FactureRepository;
 import com.ges.boutique.facture.LigneFacture;
@@ -43,6 +49,10 @@ public class CaisseServiceImpl implements CaisseService {
     private final LigneFactureRepository ligneFactureRepository;
     private final ClientRepository clientRepository;
     private final ProduitRepository produitRepository;
+    private final CompteRepository compteRepository;
+    private final OperationCompteRepository operationCompteRepository;
+    private final TransfertCaisseBanqueRepository transfertRepository;
+    private final NotificationService notificationService;
 
     // ==================== GESTION DES CAISSES ====================
 
@@ -120,6 +130,10 @@ public class CaisseServiceImpl implements CaisseService {
             operation.setDateOperation(LocalDateTime.now());
             operation.setEstReglee(true);
             operationRepository.save(operation);
+            notificationService.notifierOuvertureCaisse(Map.of(
+                    "numeroCaisse", savedCaisse.getNumeroCaisse(),
+                    "solde", savedCaisse.getSoldeActuel()
+            ));
 
             return savedCaisse;
 
@@ -339,7 +353,13 @@ public class CaisseServiceImpl implements CaisseService {
         }
         operation.setReferencePaiement(reference);
 
-        return operationRepository.save(operation);
+        OperationCaisse saved = operationRepository.save(operation);
+        notificationService.notifierOperationCaisse("ENTREE", Map.of(
+                "montant", montant,
+                "motif", motif != null ? motif : "",
+                "soldeApres", caisse.getSoldeActuel()
+        ));
+        return saved;
     }
 
     @Override
@@ -379,8 +399,281 @@ public class CaisseServiceImpl implements CaisseService {
             utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
         }
 
+        OperationCaisse savedSortie = operationRepository.save(operation);
+        notificationService.notifierOperationCaisse("SORTIE", Map.of(
+                "montant", montant,
+                "motif", motif != null ? motif : "",
+                "soldeApres", caisse.getSoldeActuel()
+        ));
+        return savedSortie;
+    }
+
+    // ==================== METHODE POUR REMBOURSEMENT RETOUR ====================
+
+    @Override
+    @Transactional
+    public OperationCaisse sortieCaisseRemboursementRetour(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+        }
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < montant) {
+            throw new SoldeInsuffisantException(
+                    "Solde insuffisant. Disponible: " + caisse.getSoldeActuel() +
+                            ", Demandé: " + montant);
+        }
+
+        Double soldeAvant = caisse.getSoldeActuel();
+
+        // Diminuer le solde - NE PAS ajouter à totalSorties
+        caisse.setSoldeActuel(soldeAvant - montant);
+        // IMPORTANT: NE PAS incrementer totalSorties
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.REMBOURSEMENT_RETOUR);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif != null ? motif : "Remboursement retour vente");
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null) {
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+        }
+
+        log.info("Remboursement retour enregistré: {} F, solde avant: {}, solde après: {} (non compté dans totalSorties)",
+                montant, soldeAvant, caisse.getSoldeActuel());
         return operationRepository.save(operation);
     }
+
+    // ==================== METHODES POUR FOURNISSEURS ====================
+
+    @Override
+    @Transactional
+    public OperationCaisse sortieCaisseFournisseur(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+        }
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < montant) {
+            throw new SoldeInsuffisantException(
+                    "Solde insuffisant. Disponible: " + caisse.getSoldeActuel() +
+                            ", Demandé: " + montant);
+        }
+
+        Double soldeAvant = caisse.getSoldeActuel();
+
+        caisse.setSoldeActuel(soldeAvant - montant);
+        caisse.setTotalSorties(caisse.getTotalSorties() + montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.PAIEMENT_FOURNISSEUR);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null) {
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+        }
+
+        log.info("Paiement fournisseur enregistré: {} F", montant);
+        return operationRepository.save(operation);
+    }
+
+    @Override
+    @Transactional
+    public OperationCaisse sortieCaisseAvance(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+        }
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < montant) {
+            throw new SoldeInsuffisantException(
+                    "Solde insuffisant. Disponible: " + caisse.getSoldeActuel() +
+                            ", Demandé: " + montant);
+        }
+
+        Double soldeAvant = caisse.getSoldeActuel();
+
+        caisse.setSoldeActuel(soldeAvant - montant);
+        caisse.setTotalSorties(caisse.getTotalSorties() + montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.AVANCE_FOURNISSEUR);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null) {
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+        }
+
+        log.info("Avance fournisseur enregistrée: {} F", montant);
+        return operationRepository.save(operation);
+    }
+
+    // ==================== PAIEMENTS EMPLOYES ====================
+
+    @Override
+    @Transactional
+    public OperationCaisse sortieCaisseEmploye(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0)
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < montant)
+            throw new SoldeInsuffisantException(
+                    "Solde insuffisant. Disponible: " + caisse.getSoldeActuel() + ", Demandé: " + montant);
+
+        Double soldeAvant = caisse.getSoldeActuel();
+        caisse.setSoldeActuel(soldeAvant - montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.PAIEMENT_EMPLOYE);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null)
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+
+        log.info("Paiement employé: {} F", montant);
+        return operationRepository.save(operation);
+    }
+
+    @Override
+    @Transactional
+    public OperationCaisse retourCaisseEmploye(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0)
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        Double soldeAvant = caisse.getSoldeActuel();
+        caisse.setSoldeActuel(soldeAvant + montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.ANNULATION_PAIEMENT_EMPLOYE);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null)
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+
+        log.info("Retour caisse annulation employé: {} F", montant);
+        return operationRepository.save(operation);
+    }
+
+    // ==================== DÉPENSES ====================
+
+    @Override
+    @Transactional
+    public OperationCaisse sortieCaisseDepense(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0)
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < montant)
+            throw new SoldeInsuffisantException("Solde insuffisant. Disponible: " + caisse.getSoldeActuel() + ", Demandé: " + montant);
+
+        Double soldeAvant = caisse.getSoldeActuel();
+        caisse.setSoldeActuel(soldeAvant - montant);
+        caisse.setTotalSorties(caisse.getTotalSorties() + montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.DEPENSE);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif(motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null)
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+
+        log.info("Dépense enregistrée: {} F - {}", montant, motif);
+        return operationRepository.save(operation);
+    }
+
+    @Override
+    @Transactional
+    public OperationCaisse entreeCaisseDepense(Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0)
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        Double soldeAvant = caisse.getSoldeActuel();
+        caisse.setSoldeActuel(soldeAvant + montant);
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operation = new OperationCaisse();
+        operation.setCaisse(caisse);
+        operation.setType(TypeOperationCaisse.DEPENSE);
+        operation.setMontant(montant);
+        operation.setSoldeAvant(soldeAvant);
+        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setMotif("Ajustement dépense: " + motif);
+        operation.setEstReglee(true);
+        operation.setDateOperation(LocalDateTime.now());
+
+        if (utilisateurId != null)
+            utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
+
+        log.info("Ajustement dépense (retour caisse): {} F", montant);
+        return operationRepository.save(operation);
+    }
+
+    // ==================== VENTES ====================
 
     @Override
     @Transactional
@@ -394,8 +687,14 @@ public class CaisseServiceImpl implements CaisseService {
         Caisse caisse = getCaisseOuverte();
         Double soldeAvant = caisse.getSoldeActuel();
 
-        caisse.setSoldeActuel(soldeAvant + vente.getMontantTotal());
-        caisse.setTotalEntrees(caisse.getTotalEntrees() + vente.getMontantTotal());
+        // Orange Money et Moov Money ne touchent pas au solde de la caisse
+        boolean estMobileMoney = modePaiement != null &&
+                (modePaiement.equals("ORANGE_MONEY") || modePaiement.equals("MOOV_MONEY"));
+
+        if (!estMobileMoney) {
+            caisse.setSoldeActuel(soldeAvant + vente.getMontantTotal());
+            caisse.setTotalEntrees(caisse.getTotalEntrees() + vente.getMontantTotal());
+        }
         caisse.setDerniereOperation(LocalDateTime.now());
         caisseRepository.save(caisse);
 
@@ -404,7 +703,7 @@ public class CaisseServiceImpl implements CaisseService {
         operation.setType(TypeOperationCaisse.VENTE_COMPTANT);
         operation.setMontant(vente.getMontantTotal());
         operation.setSoldeAvant(soldeAvant);
-        operation.setSoldeApres(caisse.getSoldeActuel());
+        operation.setSoldeApres(estMobileMoney ? soldeAvant : caisse.getSoldeActuel());
         operation.setMotif("Vente N°" + vente.getNumeroVente());
         operation.setVente(vente);
         operation.setEstReglee(true);
@@ -564,6 +863,8 @@ public class CaisseServiceImpl implements CaisseService {
         return operationRepository.save(reglementOperation);
     }
 
+    // ==================== ANNULATIONS ====================
+
     @Override
     @Transactional
     public OperationCaisse annulerVente(Vente vente, Long utilisateurId, String motif) {
@@ -579,7 +880,7 @@ public class CaisseServiceImpl implements CaisseService {
     @Override
     @Transactional
     public OperationCaisse annulerVenteAvecRepercussion(Vente vente, Long utilisateurId, String motif) {
-        log.info("=== ANNULATION VENTE AVEC RÉPERCUSSION CAISSE ===");
+        log.info("=== ANNULATION VENTE AVEC REPERCUSSION CAISSE ===");
 
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
             return annulerVenteCreditAvecRepercussion(vente, utilisateurId, motif);
@@ -647,7 +948,7 @@ public class CaisseServiceImpl implements CaisseService {
     @Override
     @Transactional
     public OperationCaisse annulerVenteCreditAvecRepercussion(Vente vente, Long utilisateurId, String motif) {
-        log.info("=== ANNULATION CRÉDIT AVEC RÉPERCUSSION CAISSE ===");
+        log.info("=== ANNULATION CREDIT AVEC REPERCUSSION CAISSE ===");
 
         if (!Boolean.TRUE.equals(vente.getEstCredit())) {
             return annulerVenteAvecRepercussion(vente, utilisateurId, motif);
@@ -713,7 +1014,7 @@ public class CaisseServiceImpl implements CaisseService {
         return savedOperation;
     }
 
-    // ==================== GESTION DES CRÉDITS ====================
+    // ==================== GESTION DES CREDITS ====================
 
     @Override
     public List<OperationCaisse> getCreditsNonRegles() {
@@ -775,7 +1076,7 @@ public class CaisseServiceImpl implements CaisseService {
         return operationRepository.findReglementsByVenteCredit(venteCreditId);
     }
 
-    // ==================== OPÉRATIONS ====================
+    // ==================== OPERATIONS ====================
 
     @Override
     public List<OperationCaisse> getOperationsDuJour() {
@@ -862,11 +1163,57 @@ public class CaisseServiceImpl implements CaisseService {
                 .filter(op -> !Boolean.TRUE.equals(op.getVenteAnnulee()))
                 .toList();
 
-        Double totalVentesComptant = operationRepository.getTotalByTypeAndPeriod(TypeOperationCaisse.VENTE_COMPTANT, debut, fin);
-        Double totalVentesCredit = operationRepository.getTotalByTypeAndPeriod(TypeOperationCaisse.VENTE_CREDIT, debut, fin);
-        Double totalReglementsCredit = operationRepository.getTotalByTypeAndPeriod(TypeOperationCaisse.REGLEMENT_CREDIT, debut, fin);
-        Double totalEntrees = operationRepository.getTotalByTypeAndPeriod(TypeOperationCaisse.ENTREE, debut, fin);
-        Double totalSorties = operationRepository.getTotalByTypeAndPeriod(TypeOperationCaisse.SORTIE, debut, fin);
+        Double totalVentesComptant = 0.0;
+        Double totalVentesCredit = 0.0;
+        Double totalReglementsCredit = 0.0;
+        Double totalEntrees = 0.0;
+        Double totalSorties = 0.0;
+        Double totalPaiementsFournisseurs = 0.0;
+        Double totalAvancesFournisseurs = 0.0;
+        Double totalRemboursementsRetour = 0.0;
+        Double totalPaiementsEmployes = 0.0;
+        Double totalAnnulations = 0.0;
+
+        for (OperationCaisse op : operations) {
+            switch (op.getType()) {
+                case VENTE_COMPTANT:
+                    totalVentesComptant += op.getMontant();
+                    break;
+                case VENTE_CREDIT:
+                    totalVentesCredit += op.getMontant();
+                    break;
+                case REGLEMENT_CREDIT:
+                    totalReglementsCredit += op.getMontant();
+                    break;
+                case ENTREE:
+                    totalEntrees += op.getMontant();
+                    break;
+                case SORTIE:
+                    totalSorties += op.getMontant();
+                    break;
+                case PAIEMENT_FOURNISSEUR:
+                    totalPaiementsFournisseurs += op.getMontant();
+                    break;
+                case AVANCE_FOURNISSEUR:
+                    totalAvancesFournisseurs += op.getMontant();
+                    break;
+                case REMBOURSEMENT_RETOUR:
+                    totalRemboursementsRetour += op.getMontant();
+                    break;
+                case PAIEMENT_EMPLOYE:
+                    totalPaiementsEmployes += op.getMontant();
+                    break;
+                case ANNULATION_VENTE:
+                case ANNULATION_CREDIT:
+                    totalAnnulations += op.getMontant();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // CORRECTION: totalSortiesCaisse n'inclut PAS les remboursements retour
+        Double totalSortiesCaisse = totalSorties + totalPaiementsFournisseurs + totalAvancesFournisseurs + totalPaiementsEmployes + totalAnnulations;
 
         Map<LocalDate, Double> chiffreParJour = new HashMap<>();
         Map<LocalDate, Integer> nombreOperationsParJour = new HashMap<>();
@@ -877,18 +1224,19 @@ public class CaisseServiceImpl implements CaisseService {
             nombreOperationsParJour.merge(date, 1, Integer::sum);
         }
 
-        Double totalEntreesCaisse = (totalVentesComptant != null ? totalVentesComptant : 0) +
-                (totalReglementsCredit != null ? totalReglementsCredit : 0) +
-                (totalEntrees != null ? totalEntrees : 0);
-
-        Double totalSortiesCaisse = totalSorties != null ? totalSorties : 0;
+        Double totalEntreesCaisse = totalVentesComptant + totalReglementsCredit + totalEntrees;
 
         stats.put("periode", Map.of("debut", dateDebut, "fin", dateFin, "nbJours", ChronoUnit.DAYS.between(dateDebut, dateFin) + 1));
-        stats.put("totalVentesComptant", arrondir(totalVentesComptant != null ? totalVentesComptant : 0));
-        stats.put("totalNouveauxCredits", arrondir(totalVentesCredit != null ? totalVentesCredit : 0));
-        stats.put("totalReglementsCredit", arrondir(totalReglementsCredit != null ? totalReglementsCredit : 0));
-        stats.put("totalAutresEntrees", arrondir(totalEntrees != null ? totalEntrees : 0));
-        stats.put("totalSorties", arrondir(totalSorties != null ? totalSorties : 0));
+        stats.put("totalVentesComptant", arrondir(totalVentesComptant));
+        stats.put("totalNouveauxCredits", arrondir(totalVentesCredit));
+        stats.put("totalReglementsCredit", arrondir(totalReglementsCredit));
+        stats.put("totalAutresEntrees", arrondir(totalEntrees));
+        stats.put("totalPaiementsFournisseurs", arrondir(totalPaiementsFournisseurs));
+        stats.put("totalAvancesFournisseurs", arrondir(totalAvancesFournisseurs));
+        stats.put("totalRemboursementsRetour", arrondir(totalRemboursementsRetour));
+        stats.put("totalPaiementsEmployes", arrondir(totalPaiementsEmployes));
+        stats.put("totalAnnulations", arrondir(totalAnnulations));
+        stats.put("totalSorties", arrondir(totalSortiesCaisse));
         stats.put("totalEntrees", arrondir(totalEntreesCaisse));
         stats.put("soldeNetPeriode", arrondir(totalEntreesCaisse - totalSortiesCaisse));
         stats.put("nombreOperations", operations.size());
@@ -923,7 +1271,10 @@ public class CaisseServiceImpl implements CaisseService {
         Double totalReglementsCredit = 0.0;
         Double totalAutresEntrees = 0.0;
         Double totalSorties = 0.0;
+        Double totalPaiementsFournisseurs = 0.0;
+        Double totalAvancesFournisseurs = 0.0;
         Double totalAnnulations = 0.0;
+        Double totalRemboursementsRetour = 0.0;
 
         for (OperationCaisse op : operations) {
             switch (op.getType()) {
@@ -940,8 +1291,15 @@ public class CaisseServiceImpl implements CaisseService {
                     totalRevenus += op.getMontant();
                     break;
                 case SORTIE:
-                case RETRAIT:
                     totalSorties += op.getMontant();
+                    totalPertes += op.getMontant();
+                    break;
+                case PAIEMENT_FOURNISSEUR:
+                    totalPaiementsFournisseurs += op.getMontant();
+                    totalPertes += op.getMontant();
+                    break;
+                case AVANCE_FOURNISSEUR:
+                    totalAvancesFournisseurs += op.getMontant();
                     totalPertes += op.getMontant();
                     break;
                 case ANNULATION_VENTE:
@@ -949,17 +1307,30 @@ public class CaisseServiceImpl implements CaisseService {
                     totalAnnulations += op.getMontant();
                     totalPertes += op.getMontant();
                     break;
+                case REMBOURSEMENT_RETOUR:
+                    totalRemboursementsRetour += op.getMontant();
+                    // CORRECTION: NE PAS ajouter aux pertes
+                    break;
                 default:
                     break;
             }
         }
 
-        resultats.put("periode", Map.of("debut", dateDebut, "fin", dateFin));
+        resultats.put("periode", Map.of("dateDebut", dateDebut, "dateFin", dateFin));
         resultats.put("totalRevenus", arrondir(totalRevenus));
         resultats.put("totalPertes", arrondir(totalPertes));
         resultats.put("soldeNet", arrondir(totalRevenus - totalPertes));
-        resultats.put("detailsRevenus", Map.of("ventesComptant", arrondir(totalVentesComptant), "reglementsCredit", arrondir(totalReglementsCredit), "autresEntrees", arrondir(totalAutresEntrees)));
-        resultats.put("detailsPertes", Map.of("sorties", arrondir(totalSorties), "annulations", arrondir(totalAnnulations)));
+        resultats.put("totalRemboursementsRetour", arrondir(totalRemboursementsRetour));
+        resultats.put("soldeReelCaisse", arrondir(totalRevenus - totalPertes - totalRemboursementsRetour));
+        resultats.put("detailsRevenus", Map.of(
+                "ventesComptant", arrondir(totalVentesComptant),
+                "reglementsCredit", arrondir(totalReglementsCredit),
+                "autresEntrees", arrondir(totalAutresEntrees)));
+        resultats.put("detailsPertes", Map.of(
+                "sorties", arrondir(totalSorties),
+                "paiementsFournisseurs", arrondir(totalPaiementsFournisseurs),
+                "avancesFournisseurs", arrondir(totalAvancesFournisseurs),
+                "annulations", arrondir(totalAnnulations)));
 
         return resultats;
     }
@@ -977,7 +1348,7 @@ public class CaisseServiceImpl implements CaisseService {
     @Override
     public byte[] genererRapportPersonnalise(LocalDate dateDebut, LocalDate dateFin) { return new byte[0]; }
 
-    // ==================== VENTES COMPTANT/CRÉDIT ====================
+    // ==================== VENTES COMPTANT/CREDIT ====================
 
     @Override
     public Map<String, Object> getVentesComptantDuJour() {
@@ -1242,7 +1613,117 @@ public class CaisseServiceImpl implements CaisseService {
         return stats;
     }
 
-    // ==================== MÉTHODES PRIVÉES ====================
+    // ==================== TRANSFERT CAISSE → BANQUE ====================
+
+    @Override
+    @Transactional
+    public Map<String, Object> transfererVersBanque(TransfertCaisseBanqueRequest request) {
+        log.info("=== TRANSFERT CAISSE → BANQUE ===");
+        log.info("Compte ID: {}, Montant: {}, Motif: {}", request.getCompteId(), request.getMontant(), request.getMotif());
+
+        if (request.getMontant() == null || request.getMontant() <= 0) {
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0");
+        }
+
+        if (request.getCompteId() == null) {
+            throw new IllegalArgumentException("Le compte bancaire destination est requis");
+        }
+
+        verifierEtOuvrirCaisseSiNecessaire();
+        Caisse caisse = getCaisseOuverte();
+
+        if (caisse.getSoldeActuel() < request.getMontant()) {
+            throw new SoldeInsuffisantException(
+                    "Solde caisse insuffisant. Disponible: " + caisse.getSoldeActuel() +
+                            ", Demandé: " + request.getMontant());
+        }
+
+        Compte compte = compteRepository.findById(request.getCompteId())
+                .orElseThrow(() -> new RessourceIntrouvableException("Compte bancaire non trouvé avec l'ID: " + request.getCompteId()));
+
+        if (!compte.isActif()) {
+            throw new IllegalStateException("Le compte bancaire " + compte.getNomBanque() + " est inactif");
+        }
+
+        Double soldeCaisseAvant = caisse.getSoldeActuel();
+
+        caisse.setSoldeActuel(soldeCaisseAvant - request.getMontant());
+        caisse.setTotalSorties(caisse.getTotalSorties() + request.getMontant());
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        OperationCaisse operationCaisse = new OperationCaisse();
+        operationCaisse.setCaisse(caisse);
+        operationCaisse.setType(TypeOperationCaisse.VIREMENT_BANQUE);
+        operationCaisse.setMontant(request.getMontant());
+        operationCaisse.setSoldeAvant(soldeCaisseAvant);
+        operationCaisse.setSoldeApres(caisse.getSoldeActuel());
+        operationCaisse.setMotif("Virement vers banque - " + compte.getNomBanque() + " - " + (request.getMotif() != null ? request.getMotif() : ""));
+        operationCaisse.setEstReglee(true);
+        operationCaisse.setDateOperation(LocalDateTime.now());
+        operationCaisse.setReferencePaiement(request.getReference());
+
+        if (request.getUtilisateurId() != null) {
+            utilisateurRepository.findById(request.getUtilisateurId()).ifPresent(operationCaisse::setUtilisateur);
+        }
+
+        OperationCaisse savedOperationCaisse = operationRepository.save(operationCaisse);
+        log.info("Sortie de caisse enregistrée: {} F", request.getMontant());
+
+        double soldeCompteAvant = compte.getSoldeActuel();
+
+        compte.setTotalVersements(compte.getTotalVersements() + request.getMontant());
+        compte.recalculerSolde();
+        compteRepository.save(compte);
+
+        OperationCompte operationCompte = new OperationCompte();
+        operationCompte.setCompte(compte);
+        operationCompte.setType("VIREMENT_CAISSE");
+        operationCompte.setMontant(request.getMontant());
+        operationCompte.setSoldeAvant(soldeCompteAvant);
+        operationCompte.setSoldeApres(compte.getSoldeActuel());
+        operationCompte.setMotif("Versement depuis caisse - " + (request.getMotif() != null ? request.getMotif() : ""));
+        operationCompte.setReference(request.getReference());
+        operationCompte.setUtilisateurId(request.getUtilisateurId());
+
+        OperationCompte savedOperationCompte = operationCompteRepository.save(operationCompte);
+        log.info("Crédit compte bancaire enregistré: {} F sur {}", request.getMontant(), compte.getNomBanque());
+
+        TransfertCaisseBanque trace = new TransfertCaisseBanque();
+        trace.setOperationCaisse(savedOperationCaisse);
+        trace.setOperationCompte(savedOperationCompte);
+        trace.setCompte(compte);
+        trace.setMontant(request.getMontant());
+        trace.setMotif(request.getMotif());
+        trace.setReference(request.getReference());
+        trace.setUtilisateurId(request.getUtilisateurId());
+
+        transfertRepository.save(trace);
+        log.info("Trace du transfert enregistrée");
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("message", "Transfert caisse → banque effectué avec succès");
+        response.put("montant", request.getMontant());
+        response.put("caisse", Map.of(
+                "soldeAvant", soldeCaisseAvant,
+                "soldeApres", caisse.getSoldeActuel()
+        ));
+        response.put("compte", Map.of(
+                "id", compte.getId(),
+                "nomBanque", compte.getNomBanque(),
+                "soldeAvant", soldeCompteAvant,
+                "soldeApres", compte.getSoldeActuel()
+        ));
+        response.put("operationCaisseId", savedOperationCaisse.getId());
+        response.put("operationCompteId", savedOperationCompte.getId());
+        response.put("transfertId", trace.getId());
+        response.put("dateTransfert", trace.getDateTransfert());
+
+        return response;
+    }
+
+    // ==================== METHODES PRIVEES ====================
 
     private void verifierEtOuvrirCaisseSiNecessaire() {
         try {

@@ -8,4 +8,5 @@ public interface AvanceClientService {
     List<AvanceClient> getHistoriqueParClient(String clientNom, String clientTelephone);
     List<AvanceClient> getToutesLesAvances();
     void utiliserAvance(String clientNom, Double montantAUtiliser);
+    void remettreAvance(String clientNom, Double montantARestituer);
 }

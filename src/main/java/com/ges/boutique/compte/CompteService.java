@@ -9,6 +9,6 @@ public interface CompteService {
     Compte getCompteById(Long id);
     OperationCompte enregistrerOperation(OperationCompteRequest request);
     List<OperationCompte> getHistoriqueOperations(Long compteId);
-    void debiterCompte(Long compteId, Double montant, String motif, TypeOperationCompte type, Long utilisateurId);
-    void crediterCompte(Long compteId, Double montant, String motif, TypeOperationCompte type, Long utilisateurId);
+    void debiterCompte(Long compteId, Double montant, String motif, String type, Long utilisateurId);
+    void crediterCompte(Long compteId, Double montant, String motif, String type, Long utilisateurId);
 }

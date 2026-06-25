@@ -46,14 +46,14 @@ public class AvanceFournisseurServiceImpl implements AvanceFournisseurService {
         avance.setUtilisateurId(request.getUtilisateurId());
 
         if ("CAISSE".equalsIgnoreCase(request.getSourceFinancement())) {
-            var op = caisseService.sortieCaisse(request.getMontant(), motifOp, request.getUtilisateurId());
+            var op = caisseService.sortieCaisseAvance(request.getMontant(), motifOp, request.getUtilisateurId());
             avance.setReferenceCaisseOperation(op.getId());
         } else if ("BANQUE".equalsIgnoreCase(request.getSourceFinancement())) {
             if (request.getCompteId() == null)
                 throw new IllegalArgumentException("Le compte bancaire est obligatoire pour une avance depuis la banque");
             avance.setCompteId(request.getCompteId());
             compteService.debiterCompte(request.getCompteId(), request.getMontant(), motifOp,
-                    TypeOperationCompte.AVANCE_FOURNISSEUR, request.getUtilisateurId());
+                    TypeOperationCompte.AVANCE_FOURNISSEUR.toString(), request.getUtilisateurId());
         } else {
             throw new IllegalArgumentException("Source de financement invalide : " + request.getSourceFinancement());
         }
@@ -103,5 +103,46 @@ public class AvanceFournisseurServiceImpl implements AvanceFournisseurService {
         }
 
         log.info("Avance fournisseur utilisée: {} F pour fournisseur id={}", montantAUtiliser, fournisseurId);
+    }
+
+    @Override
+    @Transactional
+    public void annulerUtilisationAvance(Long fournisseurId, Double montantAAnnuler) {
+        if (montantAAnnuler == null || montantAAnnuler <= 0) {
+            log.info("Aucun montant à annuler pour l'avance du fournisseur {}", fournisseurId);
+            return;
+        }
+
+        log.info("=== ANNULATION UTILISATION AVANCE ===");
+        log.info("Fournisseur ID: {}, Montant à annuler: {} F", fournisseurId, montantAAnnuler);
+
+        List<AvanceFournisseur> avances = avanceRepository.findByFournisseurIdOrderByDateDesc(fournisseurId);
+        double resteARembourser = montantAAnnuler;
+
+        for (AvanceFournisseur avance : avances) {
+            if (resteARembourser <= 0.01) break;
+
+            double utiliseSurCetteAvance = avance.getMontantUtilise();
+            if (utiliseSurCetteAvance <= 0) continue;
+
+            double aEnlever = Math.min(utiliseSurCetteAvance, resteARembourser);
+
+            avance.setMontantUtilise(avance.getMontantUtilise() - aEnlever);
+            avance.setMontantDisponible(avance.getMontantDisponible() + aEnlever);
+            resteARembourser -= aEnlever;
+
+            avanceRepository.save(avance);
+
+            log.info("✓ Avance #{}: {} F annulés (utilisé: {} → {}, disponible: {} → {})",
+                    avance.getId(), aEnlever,
+                    utiliseSurCetteAvance, avance.getMontantUtilise(),
+                    avance.getMontantDisponible() - aEnlever, avance.getMontantDisponible());
+        }
+
+        if (resteARembourser > 0.01) {
+            log.warn("⚠️ Attention: {} F n'ont pas pu être annulés (pas assez d'avance utilisée)", resteARembourser);
+        } else {
+            log.info("✅ Annulation terminée: {} F remboursés dans les avances", montantAAnnuler - resteARembourser);
+        }
     }
 }

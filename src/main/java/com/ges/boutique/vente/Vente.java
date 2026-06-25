@@ -108,6 +108,9 @@ public class Vente {
     @Column(name = "annulee")
     private Boolean annulee = false;
 
+    @Column(name = "est_retourne")
+    private Boolean estRetourne = false;
+
     @Column(name = "motif_annulation")
     private String motifAnnulation;
 
@@ -116,6 +119,9 @@ public class Vente {
 
     @Column(name = "utilisateur_annulation")
     private Long utilisateurAnnulation;
+
+    @Column(name = "client_request_id", unique = true)
+    private String clientRequestId;
 
     @PrePersist
     protected void onCreate() {

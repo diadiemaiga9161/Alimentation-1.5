@@ -1,14 +1,17 @@
 package com.ges.boutique.utilisateur;
 
+import com.ges.boutique.email.EmailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/utilisateurs")
@@ -17,6 +20,10 @@ import java.util.List;
 public class UtilisateurController {
 
     private final UtilisateurService utilisateurService;
+    private final EmailService emailService;
+
+    @Value("${spring.application.name:MG Boutique}")
+    private String boutiqueName;
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -47,6 +54,7 @@ public class UtilisateurController {
         dto.setTelephone(utilisateur.getTelephone());
         dto.setRole(utilisateur.getRole());
         dto.setActif(utilisateur.isActif());
+        dto.setPhoto(utilisateur.getPhoto());
 
         return ResponseEntity.ok(dto);
     }
@@ -55,7 +63,11 @@ public class UtilisateurController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Créer un nouvel utilisateur")
     public ResponseEntity<Utilisateur> creerUtilisateur(@RequestBody Utilisateur utilisateur) {
-        return ResponseEntity.ok(utilisateurService.creerUtilisateur(utilisateur));
+        Utilisateur cree = utilisateurService.creerUtilisateur(utilisateur);
+        if (cree.getEmail() != null && !cree.getEmail().isBlank()) {
+            emailService.envoyerBienvenueVendeur(cree.getEmail(), cree.getNomComplet(), cree.getUsername(), boutiqueName);
+        }
+        return ResponseEntity.ok(cree);
     }
 
     @PutMapping("/{id}")
@@ -73,5 +85,16 @@ public class UtilisateurController {
     public ResponseEntity<Void> supprimerUtilisateur(@PathVariable Long id) {
         utilisateurService.supprimerUtilisateur(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/me/photo")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Mettre à jour la photo de profil")
+    public ResponseEntity<Map<String, Object>> mettreAJourPhoto(
+            @RequestBody Map<String, String> body,
+            Principal principal) {
+        Utilisateur utilisateur = utilisateurService.obtenirUtilisateurParUsername(principal.getName());
+        Utilisateur updated = utilisateurService.mettreAJourPhoto(utilisateur.getId(), body.get("photo"));
+        return ResponseEntity.ok(Map.of("success", true, "photo", updated.getPhoto() != null ? updated.getPhoto() : ""));
     }
 }

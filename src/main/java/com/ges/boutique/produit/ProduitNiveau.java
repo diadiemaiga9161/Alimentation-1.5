@@ -36,4 +36,7 @@ public class ProduitNiveau {
 
     @Column(name = "prix_vente", nullable = false)
     private Double prixVente;
+
+    @Column(nullable = false)
+    private Integer stock = 0; // stock propre de ce niveau (ex: nb de cartouches en stock)
 }

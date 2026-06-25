@@ -30,8 +30,9 @@ public class VenteDto {
     private Double montantRestant;
     private Boolean creditRegle;
 
-    // Champs pour l'annulation
+    // Champs pour l'annulation et le retour
     private Boolean annulee;
     private String motifAnnulation;
     private LocalDateTime dateAnnulation;
+    private Boolean estRetourne;
 }

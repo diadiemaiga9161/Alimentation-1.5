@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class OperationCompteRequest {
     private Long compteId;
-    private TypeOperationCompte type;
+    private TypeOperationCompte type;  // Garder l'enum pour la requête
     private Double montant;
     private String motif;
     private String reference;

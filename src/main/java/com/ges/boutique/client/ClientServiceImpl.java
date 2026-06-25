@@ -2,6 +2,8 @@ package com.ges.boutique.client;
 
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "clients", allEntries = true)
     public Client creerClient(Client client) {
         preparerEtValiderClient(client);
         if (clientRepository.findByNumeroTelephone(client.getNumeroTelephone()).isPresent()) {
@@ -26,6 +29,7 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "clients", allEntries = true)
     public Client modifierClient(Long id, Client client) {
         Client existingClient = clientRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Client non trouvé avec l'ID: " + id));
@@ -48,6 +52,7 @@ public class ClientServiceImpl implements ClientService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "clients", allEntries = true)
     public void supprimerClient(Long id) {
         if (!clientRepository.existsById(id)) {
             throw new RessourceIntrouvableException("Client non trouvé avec l'ID: " + id);
@@ -72,6 +77,7 @@ public class ClientServiceImpl implements ClientService {
     }
 
     @Override
+    @Cacheable("clients")
     public List<Client> trouverTous() {
         return clientRepository.findAll();
     }

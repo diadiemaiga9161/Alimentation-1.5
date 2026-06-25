@@ -13,4 +13,5 @@ public interface UtilisateurService extends UserDetailsService {
     List<Utilisateur> obtenirTousLesUtilisateurs();
     Utilisateur obtenirUtilisateurParUsername(String username);
     long compterUtilisateurs();
+    Utilisateur mettreAJourPhoto(Long id, String photo);
 }

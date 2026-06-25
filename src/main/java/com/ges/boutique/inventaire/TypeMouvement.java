@@ -4,5 +4,6 @@ public enum TypeMouvement {
     ENTREE,
     SORTIE,
     AJUSTEMENT,
-    RETOUR
+    RETOUR,
+    BONUS_FOURNISSEUR
 }

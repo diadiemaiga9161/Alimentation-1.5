@@ -2,6 +2,8 @@ package com.ges.boutique.produit;
 
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ public class CategorieServiceImpl implements CategorieService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "categories", allEntries = true)
     public Categorie creerCategorie(Categorie categorie) {
         if (categorie.getNom() == null || categorie.getNom().trim().isEmpty()) {
             throw new IllegalArgumentException("Le nom de la catégorie est requis");
@@ -40,6 +43,7 @@ public class CategorieServiceImpl implements CategorieService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "categories", allEntries = true)
     public Categorie modifierCategorie(Long id, Categorie categorieDetails) {
         Categorie categorie = categorieRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Catégorie non trouvée avec l'ID: " + id));
@@ -64,6 +68,7 @@ public class CategorieServiceImpl implements CategorieService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "categories", allEntries = true)
     public void supprimerCategorie(Long id) {
         Categorie categorie = categorieRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Catégorie non trouvée avec l'ID: " + id));
@@ -78,6 +83,7 @@ public class CategorieServiceImpl implements CategorieService {
     }
 
     @Override
+    @Cacheable("categories")
     public List<Categorie> obtenirToutesCategories() {
         return categorieRepository.findAll();
     }

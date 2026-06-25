@@ -21,9 +21,8 @@ public class OperationCompte {
     @JoinColumn(name = "compte_id", nullable = false)
     private Compte compte;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private TypeOperationCompte type;
+    @Column(nullable = false, length = 50)
+    private String type;
 
     @Column(nullable = false)
     private Double montant;

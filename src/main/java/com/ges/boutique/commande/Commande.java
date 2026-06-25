@@ -1,0 +1,121 @@
+package com.ges.boutique.commande;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.ges.boutique.client.Client;
+import com.ges.boutique.utilisateur.Utilisateur;
+import com.ges.boutique.vente.ModePaiement;
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "commandes")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Commande {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String numeroCommande;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "vendeur_id", nullable = false)
+    private Utilisateur vendeur;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
+    @Column(name = "client_nom")
+    private String clientNom;
+
+    @Column(name = "client_prenom")
+    private String clientPrenom;
+
+    @Column(name = "client_telephone")
+    private String clientTelephone;
+
+    @OneToMany(mappedBy = "commande", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
+    @JsonManagedReference
+    private List<LigneCommande> lignes = new ArrayList<>();
+
+    @Column(name = "montant_total")
+    private Double montantTotal = 0.0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement")
+    private ModePaiement modePaiement;
+
+    @Column(name = "reference_paiement")
+    private String referencePaiement;
+
+    @Column(name = "est_credit")
+    private Boolean estCredit = false;
+
+    @Column(name = "montant_verse")
+    private Double montantVerse = 0.0;
+
+    @Column(name = "montant_restant")
+    private Double montantRestant = 0.0;
+
+    @Column(name = "date_echeance")
+    private LocalDate dateEcheance;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "statut", nullable = false)
+    private StatutCommande statut = StatutCommande.BROUILLON;
+
+    @Column(name = "date_commande")
+    private LocalDateTime dateCommande;
+
+    @Column(name = "date_validation")
+    private LocalDateTime dateValidation;
+
+    @Column(name = "vente_id")
+    private Long venteId;
+
+    @Column(name = "notes", length = 500)
+    private String notes;
+
+    @PrePersist
+    protected void onCreate() {
+        dateCommande = LocalDateTime.now();
+        if (numeroCommande == null) {
+            numeroCommande = "CMD-" + System.currentTimeMillis();
+        }
+        recalculer();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        recalculer();
+    }
+
+    public void recalculer() {
+        montantTotal = lignes == null ? 0.0 :
+                lignes.stream().mapToDouble(l -> l.getSousTotal() != null ? l.getSousTotal() : 0.0).sum();
+        if (Boolean.TRUE.equals(estCredit)) {
+            montantRestant = montantTotal - (montantVerse != null ? montantVerse : 0.0);
+        } else {
+            montantRestant = 0.0;
+        }
+    }
+
+    public Long getVendeurId() {
+        return vendeur != null ? vendeur.getId() : null;
+    }
+
+    public Long getClientId() {
+        return client != null ? client.getId() : null;
+    }
+}

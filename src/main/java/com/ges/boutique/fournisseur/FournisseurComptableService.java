@@ -6,6 +6,10 @@ import com.ges.boutique.compte.CompteService;
 import com.ges.boutique.compte.TypeOperationCompte;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.SoldeInsuffisantException;
+import com.ges.boutique.inventaire.InventaireService;
+import com.ges.boutique.objectif.ObjectifFournisseur;
+import com.ges.boutique.objectif.ObjectifFournisseurRepository;
+import com.ges.boutique.objectif.StatutObjectif;
 import com.ges.boutique.produit.Categorie;
 import com.ges.boutique.produit.CategorieRepository;
 import com.ges.boutique.produit.Produit;
@@ -18,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -33,10 +39,17 @@ public class FournisseurComptableService {
     private final CategorieRepository categorieRepository;
     private final CompteService compteService;
     private final AvanceFournisseurService avanceFournisseurService;
+    private final InventaireService inventaireService;
+    private final AchatPaiementLienRepository achatPaiementLienRepository;
+    private final ObjectifFournisseurRepository objectifRepository;
 
+    // ============================================
+    // MÉTHODE 1 : CRÉER UN ACHAT
+    // ============================================
     @Transactional
     public AchatFournisseur creerAchat(AchatFournisseurRequest request) {
-        log.info("Création d'un achat fournisseur: {}", request);
+        log.info("=== CRÉATION ACHAT FOURNISSEUR ===");
+        log.info("Request: {}", request);
 
         Fournisseur fournisseur;
         if (request.getFournisseurId() != null) {
@@ -54,11 +67,43 @@ public class FournisseurComptableService {
         achat.setCommentaire(request.getCommentaire());
         achat.setUtilisateurId(request.getUtilisateurId());
         achat.setMontantTotal(0.0);
+
         double avanceUtilisee = request.getMontantAvanceUtilise() != null ? request.getMontantAvanceUtilise() : 0.0;
         double paiementImmediat = request.getMontantPaye() != null ? request.getMontantPaye() : 0.0;
         achat.setMontantPaye(paiementImmediat + avanceUtilisee);
 
+        achat.setMontantAvanceUtilise(avanceUtilisee);
+
+        String modePaiement = request.getModePaiementImmediat();
+        if (paiementImmediat > 0) {
+            if (modePaiement == null || modePaiement.trim().isEmpty()) {
+                if (request.getCompteIdPaiement() != null && request.getCompteIdPaiement() > 0) {
+                    modePaiement = "BANQUE";
+                    log.info("Mode de paiement détecté automatiquement: BANQUE (compteId={})", request.getCompteIdPaiement());
+                } else {
+                    modePaiement = "ESPECES";
+                    log.info("Mode de paiement détecté automatiquement: ESPECES (par défaut)");
+                }
+            }
+
+            achat.setModePaiementImmediat(modePaiement);
+
+            if ("BANQUE".equals(modePaiement)) {
+                if (request.getCompteIdPaiement() == null) {
+                    throw new IllegalArgumentException("Le compte bancaire est obligatoire pour un paiement par BANQUE");
+                }
+                achat.setCompteIdPaiement(request.getCompteIdPaiement());
+            } else {
+                achat.setCompteIdPaiement(null);
+            }
+
+            log.info("Paiement immédiat enregistré: {} F - Mode: {}", paiementImmediat, modePaiement);
+        } else {
+            log.info("Aucun paiement immédiat, achat payé uniquement par avance");
+        }
+
         double totalAchat = 0.0;
+
         for (LigneAchatRequest ligneReq : request.getLignes()) {
             Produit produit;
             if (ligneReq.getProduitId() != null) {
@@ -79,8 +124,12 @@ public class FournisseurComptableService {
             totalAchat += sousTotal;
 
             achat.getLignes().add(ligne);
-            produit.setQuantite(produit.getQuantite() + ligneReq.getQuantite());
-            produitRepository.save(produit);
+
+            int ancienneQuantite = produit.getQuantite() != null ? produit.getQuantite() : 0;
+            String motifEntree = "Achat fournisseur - " + fournisseur.getNom() + " - " + produit.getNom();
+            inventaireService.entreeStock(produit.getId(), ligneReq.getQuantite(), request.getUtilisateurId(), motifEntree);
+            log.info("Stock ajouté (achat): +{} x {} (stock avant: {}, stock après: {})",
+                    ligneReq.getQuantite(), produit.getNom(), ancienneQuantite, ancienneQuantite + ligneReq.getQuantite());
         }
 
         achat.setMontantTotal(totalAchat);
@@ -91,7 +140,6 @@ public class FournisseurComptableService {
             achat.setStatut(StatutAchat.EN_COURS);
         }
 
-        // Déduire l'avance fournisseur si applicable (déjà payé via l'avance)
         if (avanceUtilisee > 0) {
             avanceFournisseurService.utiliserAvance(fournisseur.getId(), avanceUtilisee);
             log.info("Avance fournisseur utilisée: {} F pour {}", avanceUtilisee, fournisseur.getNom());
@@ -103,11 +151,384 @@ public class FournisseurComptableService {
         fournisseurRepository.save(fournisseur);
 
         AchatFournisseur savedAchat = achatRepository.save(achat);
-        log.info("Achat créé: id={}, total={}, paye={}, restant={}, statut={}",
-                savedAchat.getId(), totalAchat, achat.getMontantPaye(), achat.getMontantRestant(), achat.getStatut());
+
+        if (paiementImmediat > 0) {
+            PaiementFournisseur paiement = new PaiementFournisseur();
+            paiement.setDatePaiement(LocalDateTime.now());
+            paiement.setFournisseur(fournisseur);
+            paiement.setMontant(paiementImmediat);
+
+            if ("BANQUE".equals(modePaiement)) {
+                paiement.setModePaiement(ModePaiementFournisseur.BANQUE);
+                paiement.setCompteId(request.getCompteIdPaiement());
+                compteService.debiterCompte(
+                        request.getCompteIdPaiement(),
+                        paiementImmediat,
+                        "Paiement fournisseur - " + fournisseur.getNom() + " (achat #" + savedAchat.getId() + ")",
+                        TypeOperationCompte.PAIEMENT_FOURNISSEUR.toString(),
+                        request.getUtilisateurId()
+                );
+                log.info("Débit compte bancaire id={} pour paiement fournisseur", request.getCompteIdPaiement());
+            } else {
+                paiement.setModePaiement(ModePaiementFournisseur.ESPECES);
+                try {
+                    OperationCaisse sortie = caisseService.sortieCaisseFournisseur(
+                            paiementImmediat,
+                            "Paiement fournisseur - " + fournisseur.getNom() + " (achat #" + savedAchat.getId() + ")",
+                            request.getUtilisateurId()
+                    );
+                    paiement.setOperationCaisse(sortie);
+                    log.info("Opération caisse créée pour paiement fournisseur");
+                } catch (SoldeInsuffisantException e) {
+                    throw new SoldeInsuffisantException(
+                            "Solde caisse insuffisant pour payer " + paiementImmediat +
+                                    " F. Veuillez utiliser un autre mode de paiement."
+                    );
+                }
+            }
+
+            paiement.setReference("Paiement immédiat achat #" + savedAchat.getId());
+            paiement.setObservation(request.getCommentaire());
+            paiement.setUtilisateurId(request.getUtilisateurId());
+
+            PaiementFournisseur savedPaiement = paiementRepository.save(paiement);
+
+            AchatPaiementLien lien = new AchatPaiementLien();
+            lien.setAchatId(savedAchat.getId());
+            lien.setPaiementId(savedPaiement.getId());
+            lien.setMontantApplique(paiementImmediat);
+            lien.setUtilisateurId(request.getUtilisateurId());
+            achatPaiementLienRepository.save(lien);
+
+            log.info("🔗 Lien créé: Paiement immédiat #{} → Achat #{} : {} F",
+                    savedPaiement.getId(), savedAchat.getId(), paiementImmediat);
+        }
+
+        log.info("✅ Achat créé: id={}, total={}, paye={}, avanceUtilise={}, modePaiement={}, restant={}, statut={}",
+                savedAchat.getId(), totalAchat, achat.getMontantPaye(), avanceUtilisee,
+                savedAchat.getModePaiementImmediat(), savedAchat.getMontantRestant(), savedAchat.getStatut());
+        log.info("=== FIN CRÉATION ACHAT ===");
+
+        mettreAJourObjectifsApresAchat(savedAchat);
 
         return savedAchat;
     }
+
+    private void mettreAJourObjectifsApresAchat(AchatFournisseur achat) {
+        int mois = achat.getDateAchat().getMonthValue();
+        int annee = achat.getDateAchat().getYear();
+        Long fournisseurId = achat.getFournisseur().getId();
+
+        List<ObjectifFournisseur> objectifs = objectifRepository
+                .findByFournisseurIdAndMoisAndAnneeAndStockAjouteFalse(fournisseurId, mois, annee);
+
+        if (objectifs.isEmpty()) return;
+
+        for (LigneAchatFournisseur ligne : achat.getLignes()) {
+            for (ObjectifFournisseur objectif : objectifs) {
+                // Si l'objectif est lié à un produit spécifique → vérifier la correspondance
+                if (objectif.getProduit() != null &&
+                        !objectif.getProduit().getId().equals(ligne.getProduit().getId())) {
+                    continue;
+                }
+                double nouvelleQte = (objectif.getQuantiteAtteinte() != null ? objectif.getQuantiteAtteinte() : 0.0)
+                        + ligne.getQuantite();
+                objectif.setQuantiteAtteinte(nouvelleQte);
+                objectif.setBonusCalcule(nouvelleQte * objectif.getBonusParUnite());
+                objectif.setStatut(nouvelleQte >= objectif.getObjectifQuantite()
+                        ? StatutObjectif.ATTEINT : StatutObjectif.NON_ATTEINT);
+                objectifRepository.save(objectif);
+                log.info("Objectif #{} mis à jour automatiquement: qteAtteinte={}/{} statut={}",
+                        objectif.getId(), nouvelleQte, objectif.getObjectifQuantite(), objectif.getStatut());
+            }
+        }
+    }
+
+    // ============================================
+    // MÉTHODE 2 : PAYER FOURNISSEUR (MODIFIÉE POUR SUPPORTER achatCibleId)
+    // ============================================
+    @Transactional
+    public PaiementFournisseur payerFournisseur(PaiementFournisseurRequest request) {
+        log.info("=== DÉBUT PAIEMENT FOURNISSEUR ===");
+        log.info("Paiement fournisseur request: {}", request);
+
+        Fournisseur fournisseur = fournisseurRepository.findById(request.getFournisseurId())
+                .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur introuvable"));
+
+        log.info("Fournisseur trouvé: id={}, nom={}, solde avant={}", fournisseur.getId(), fournisseur.getNom(), fournisseur.getSolde());
+
+        if (request.getMontant() <= 0) throw new IllegalArgumentException("Montant invalide");
+
+        // Vérification du solde fournisseur
+        if (fournisseur.getSolde() < request.getMontant() - 0.01) {
+            throw new IllegalStateException("Le solde dû au fournisseur (" + fournisseur.getSolde() +
+                    ") est inférieur au montant payé (" + request.getMontant() + ")");
+        }
+
+        // Créer et sauvegarder le paiement
+        PaiementFournisseur paiement = new PaiementFournisseur();
+        paiement.setDatePaiement(LocalDateTime.now());
+        paiement.setFournisseur(fournisseur);
+        paiement.setMontant(request.getMontant());
+        paiement.setModePaiement(request.getModePaiement());
+        paiement.setReference(request.getReference());
+        paiement.setObservation(request.getObservation());
+        paiement.setUtilisateurId(request.getUtilisateurId());
+
+        if (request.getModePaiement() == ModePaiementFournisseur.ESPECES) {
+            try {
+                OperationCaisse sortie = caisseService.sortieCaisseFournisseur(
+                        request.getMontant(),
+                        "Paiement fournisseur - " + fournisseur.getNom(),
+                        request.getUtilisateurId()
+                );
+                paiement.setOperationCaisse(sortie);
+                log.info("Opération caisse créée pour paiement fournisseur");
+            } catch (SoldeInsuffisantException e) {
+                throw new SoldeInsuffisantException(
+                        "Solde caisse insuffisant pour payer " + request.getMontant() +
+                                ". Veuillez utiliser un autre mode de paiement."
+                );
+            }
+        } else if (request.getModePaiement() == ModePaiementFournisseur.BANQUE) {
+            if (request.getCompteId() == null)
+                throw new IllegalArgumentException("Le compte bancaire est obligatoire pour un paiement par banque");
+            compteService.debiterCompte(
+                    request.getCompteId(),
+                    request.getMontant(),
+                    "Paiement fournisseur - " + fournisseur.getNom(),
+                    TypeOperationCompte.PAIEMENT_FOURNISSEUR.toString(),
+                    request.getUtilisateurId()
+            );
+            paiement.setCompteId(request.getCompteId());
+            log.info("Débit compte bancaire id={} pour paiement fournisseur", request.getCompteId());
+        }
+
+        PaiementFournisseur savedPaiement = paiementRepository.save(paiement);
+        log.info("Paiement sauvegardé: id={}, montant={}", savedPaiement.getId(), savedPaiement.getMontant());
+
+        // ========== NOUVEAU: Si achatCibleId est spécifié, payer UNIQUEMENT cet achat ==========
+        if (request.getAchatCibleId() != null) {
+            log.info("Paiement spécifique pour l'achat #{}", request.getAchatCibleId());
+
+            AchatFournisseur achatCible = achatRepository.findById(request.getAchatCibleId())
+                    .orElseThrow(() -> new RessourceIntrouvableException("Achat cible introuvable: " + request.getAchatCibleId()));
+
+            // Vérifier que l'achat appartient bien au fournisseur
+            if (!achatCible.getFournisseur().getId().equals(fournisseur.getId())) {
+                throw new IllegalArgumentException("L'achat #" + request.getAchatCibleId() + " n'appartient pas à ce fournisseur");
+            }
+
+            double montantRestantAchat = achatCible.getMontantTotal() - achatCible.getMontantPaye();
+            double montantApplique = Math.min(request.getMontant(), montantRestantAchat);
+
+            // Créer le lien
+            AchatPaiementLien lien = new AchatPaiementLien();
+            lien.setAchatId(achatCible.getId());
+            lien.setPaiementId(savedPaiement.getId());
+            lien.setMontantApplique(montantApplique);
+            lien.setUtilisateurId(request.getUtilisateurId());
+            achatPaiementLienRepository.save(lien);
+
+            // Mettre à jour l'achat
+            double nouveauPaye = achatCible.getMontantPaye() + montantApplique;
+            achatCible.setMontantPaye(nouveauPaye);
+            achatCible.setMontantRestant(achatCible.getMontantTotal() - nouveauPaye);
+            if (achatCible.getMontantRestant() <= 0.01) {
+                achatCible.setStatut(StatutAchat.PAYE);
+            }
+            achatRepository.save(achatCible);
+
+            log.info("🔗 Lien créé: Paiement #{} → Achat #{} : {} F",
+                    savedPaiement.getId(), achatCible.getId(), montantApplique);
+
+            // Mettre à jour le fournisseur (réduire le solde)
+            fournisseur.setTotalPaye(fournisseur.getTotalPaye() + montantApplique);
+            fournisseur.setSolde(fournisseur.getSolde() - montantApplique);
+            fournisseurRepository.save(fournisseur);
+
+            log.info("Fournisseur mis à jour: totalPaye={}, nouveau solde={}", fournisseur.getTotalPaye(), fournisseur.getSolde());
+
+            log.info("=== FIN PAIEMENT FOURNISSEUR (spécifique) ===");
+            return savedPaiement;
+        }
+        // ===================================================================================
+
+        // Mode FIFO: répartir sur tous les achats non payés (ancien comportement)
+        List<AchatFournisseur> achatsNonPayes = achatRepository.findByFournisseurIdAndStatutNot(fournisseur.getId(), StatutAchat.PAYE);
+        achatsNonPayes.sort((a1, a2) -> a1.getDateAchat().compareTo(a2.getDateAchat()));
+
+        log.info("Nombre d'achats non payés trouvés: {}", achatsNonPayes.size());
+
+        double montantRestantAPayer = request.getMontant();
+        log.info("Montant à répartir (FIFO): {}", montantRestantAPayer);
+
+        for (AchatFournisseur achat : achatsNonPayes) {
+            if (montantRestantAPayer <= 0.01) break;
+
+            double montantDuPourCetAchat = achat.getMontantTotal() - achat.getMontantPaye();
+            double montantApplique = Math.min(montantDuPourCetAchat, montantRestantAPayer);
+
+            log.info("Achat id={}: total={}, dejaPaye={}, du={}, montantApplique={}, reste={}",
+                    achat.getId(), achat.getMontantTotal(), achat.getMontantPaye(),
+                    montantDuPourCetAchat, montantApplique, montantRestantAPayer - montantApplique);
+
+            AchatPaiementLien lien = new AchatPaiementLien();
+            lien.setAchatId(achat.getId());
+            lien.setPaiementId(savedPaiement.getId());
+            lien.setMontantApplique(montantApplique);
+            lien.setUtilisateurId(request.getUtilisateurId());
+            achatPaiementLienRepository.save(lien);
+            log.info("🔗 Lien créé: Paiement #{} → Achat #{} : {} F",
+                    savedPaiement.getId(), achat.getId(), montantApplique);
+
+            if (montantDuPourCetAchat <= montantRestantAPayer + 0.01) {
+                achat.setMontantPaye(achat.getMontantTotal());
+                achat.setMontantRestant(0.0);
+                achat.setStatut(StatutAchat.PAYE);
+                montantRestantAPayer -= montantDuPourCetAchat;
+                log.info("✅ Achat id={} entièrement payé!", achat.getId());
+            } else {
+                double nouveauPaye = achat.getMontantPaye() + montantRestantAPayer;
+                achat.setMontantPaye(nouveauPaye);
+                achat.setMontantRestant(achat.getMontantTotal() - nouveauPaye);
+                log.info("⚠️ Achat id={} partiellement payé: nouveauPaye={}, restant={}",
+                        achat.getId(), nouveauPaye, achat.getMontantRestant());
+                montantRestantAPayer = 0;
+            }
+            achatRepository.save(achat);
+        }
+
+        fournisseur.setTotalPaye(fournisseur.getTotalPaye() + request.getMontant());
+        fournisseur.setSolde(fournisseur.getSolde() - request.getMontant());
+        fournisseurRepository.save(fournisseur);
+        log.info("Fournisseur mis à jour: totalPaye={}, nouveau solde={}", fournisseur.getTotalPaye(), fournisseur.getSolde());
+
+        // Vérification finale
+        List<AchatFournisseur> tousLesAchats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseur.getId());
+        for (AchatFournisseur achat : tousLesAchats) {
+            double restant = achat.getMontantTotal() - achat.getMontantPaye();
+            if (restant <= 0.01 && achat.getStatut() != StatutAchat.PAYE) {
+                achat.setStatut(StatutAchat.PAYE);
+                achatRepository.save(achat);
+                log.info("🔧 Correction finale: achat id={} marqué PAYE", achat.getId());
+            }
+        }
+
+        log.info("=== FIN PAIEMENT FOURNISSEUR ===");
+        return savedPaiement;
+    }
+
+    // ============================================
+    // MÉTHODE 3 : ANNULER UN ACHAT
+    // ============================================
+    @Transactional
+    public AchatFournisseur annulerAchat(Long achatId, Long utilisateurId) {
+        log.info("=== ANNULATION ACHAT ID: {} ===", achatId);
+
+        AchatFournisseur achat = achatRepository.findById(achatId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Achat introuvable: " + achatId));
+
+        if (achat.getStatut() == StatutAchat.ANNULE) {
+            throw new IllegalStateException("Cet achat est déjà annulé");
+        }
+
+        Fournisseur fournisseur = achat.getFournisseur();
+
+        List<AchatPaiementLien> liens = achatPaiementLienRepository.findByAchatId(achatId);
+
+        double totalRemboursementCaisse = 0.0;
+        double totalRemboursementBanque = 0.0;
+        Map<Long, Double> remboursementParCompte = new HashMap<>();
+
+        log.info("Nombre de liens trouvés pour l'achat #{}: {}", achatId, liens.size());
+
+        for (AchatPaiementLien lien : liens) {
+            PaiementFournisseur paiement = paiementRepository.findById(lien.getPaiementId())
+                    .orElse(null);
+            if (paiement == null) {
+                log.warn("Paiement #{} non trouvé pour le lien {}", lien.getPaiementId(), lien.getId());
+                continue;
+            }
+
+            if (paiement.getModePaiement() == ModePaiementFournisseur.ESPECES) {
+                totalRemboursementCaisse += lien.getMontantApplique();
+                log.info("📋 Paiement #{} (ESPECES): {} F", lien.getPaiementId(), lien.getMontantApplique());
+            } else if (paiement.getModePaiement() == ModePaiementFournisseur.BANQUE) {
+                totalRemboursementBanque += lien.getMontantApplique();
+                remboursementParCompte.merge(paiement.getCompteId(), lien.getMontantApplique(), Double::sum);
+                log.info("📋 Paiement #{} (BANQUE, compte {}): {} F",
+                        lien.getPaiementId(), paiement.getCompteId(), lien.getMontantApplique());
+            }
+        }
+
+        double montantAvanceUtilise = achat.getMontantAvanceUtilise() != null ? achat.getMontantAvanceUtilise() : 0.0;
+
+        log.info("Détails paiement - Avance utilisée: {} F, Paiements caisse: {} F, Paiements banque: {} F",
+                montantAvanceUtilise, totalRemboursementCaisse, totalRemboursementBanque);
+
+        List<LigneAchatFournisseur> lignes = achat.getLignes();
+        if (lignes != null) {
+            for (LigneAchatFournisseur ligne : lignes) {
+                Produit produit = ligne.getProduit();
+                if (produit == null) continue;
+                int qteARetirer = ligne.getQuantite();
+                int stockActuel = produit.getQuantite() != null ? produit.getQuantite() : 0;
+                int qteEffective = Math.min(qteARetirer, stockActuel);
+                if (qteEffective <= 0) {
+                    log.warn("Stock déjà à 0 pour {} — aucune sortie créée", produit.getNom());
+                    continue;
+                }
+                String motif = "Annulation achat fournisseur " + (fournisseur != null ? fournisseur.getNom() : "") + " - " + produit.getNom();
+                inventaireService.sortieStock(produit.getId(), qteEffective, utilisateurId, motif);
+                log.info("Stock retiré (annulation achat): -{} x {} (stock avant: {})", qteEffective, produit.getNom(), stockActuel);
+            }
+        }
+
+        if (montantAvanceUtilise > 0.01) {
+            log.info("Remboursement de l'avance: {} F pour le fournisseur {}", montantAvanceUtilise, fournisseur.getNom());
+            avanceFournisseurService.annulerUtilisationAvance(fournisseur.getId(), montantAvanceUtilise);
+            log.info("✅ Avance restituée: {} F", montantAvanceUtilise);
+        } else {
+            log.info("Aucune avance utilisée pour cet achat");
+        }
+
+        if (totalRemboursementCaisse > 0.01) {
+            String motif = "Annulation achat #" + achatId + " - Remboursement espèces";
+            caisseService.entreeCaisse(totalRemboursementCaisse, motif, utilisateurId, "ESPECES", "Annulation achat #" + achatId);
+            log.info("✅ Remboursement caisse effectué: {} F retournés en caisse", totalRemboursementCaisse);
+        }
+
+        for (Map.Entry<Long, Double> entry : remboursementParCompte.entrySet()) {
+            Long compteId = entry.getKey();
+            Double montant = entry.getValue();
+            String motif = "Annulation achat #" + achatId + " - Remboursement banque";
+            compteService.crediterCompte(compteId, montant, motif,
+                    TypeOperationCompte.REMBOURSEMENT_ACHAT.toString(), utilisateurId);
+            log.info("✅ Remboursement banque effectué: {} F crédités sur le compte {}", montant, compteId);
+        }
+
+        double montantNonPaye = achat.getMontantRestant() != null ? achat.getMontantRestant() : 0.0;
+        if (fournisseur != null) {
+            fournisseur.setTotalAchats(Math.max(0, fournisseur.getTotalAchats() - achat.getMontantTotal()));
+            fournisseur.setSolde(Math.max(0, fournisseur.getSolde() - montantNonPaye));
+            fournisseurRepository.save(fournisseur);
+            log.info("Fournisseur ajusté: totalAchats={}, solde={}", fournisseur.getTotalAchats(), fournisseur.getSolde());
+        }
+
+        achat.setStatut(StatutAchat.ANNULE);
+        AchatFournisseur saved = achatRepository.save(achat);
+
+        log.info("=== ANNULATION TERMINÉE AVEC SUCCÈS ===");
+        log.info("Résumé: Stock retiré, Avance remboursée: {} F, Caisse remboursée: {} F, Banque remboursée: {} F",
+                montantAvanceUtilise, totalRemboursementCaisse, totalRemboursementBanque);
+
+        return saved;
+    }
+
+    // ============================================
+    // MÉTHODES PRIVÉES
+    // ============================================
 
     private Produit creerNouveauProduitDepuisAchat(LigneAchatRequest ligneReq) {
         if (ligneReq.getNouveauProduitNom() == null || ligneReq.getNouveauProduitNom().trim().isEmpty()) {
@@ -167,126 +588,9 @@ public class FournisseurComptableService {
         return fournisseurRepository.save(f);
     }
 
-    @Transactional
-    public PaiementFournisseur payerFournisseur(PaiementFournisseurRequest request) {
-        log.info("=== DÉBUT PAIEMENT FOURNISSEUR ===");
-        log.info("Paiement fournisseur request: {}", request);
-
-        Fournisseur fournisseur = fournisseurRepository.findById(request.getFournisseurId())
-                .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur introuvable"));
-
-        log.info("Fournisseur trouvé: id={}, nom={}, solde avant={}", fournisseur.getId(), fournisseur.getNom(), fournisseur.getSolde());
-
-        if (request.getMontant() <= 0) throw new IllegalArgumentException("Montant invalide");
-        if (fournisseur.getSolde() < request.getMontant() - 0.01) {
-            throw new IllegalStateException("Le solde dû au fournisseur (" + fournisseur.getSolde() +
-                    ") est inférieur au montant payé (" + request.getMontant() + ")");
-        }
-
-        // Créer et sauvegarder le paiement
-        PaiementFournisseur paiement = new PaiementFournisseur();
-        paiement.setDatePaiement(LocalDateTime.now());
-        paiement.setFournisseur(fournisseur);
-        paiement.setMontant(request.getMontant());
-        paiement.setModePaiement(request.getModePaiement());
-        paiement.setReference(request.getReference());
-        paiement.setObservation(request.getObservation());
-        paiement.setUtilisateurId(request.getUtilisateurId());
-
-        if (request.getModePaiement() == ModePaiementFournisseur.ESPECES) {
-            try {
-                OperationCaisse sortie = caisseService.sortieCaisse(
-                        request.getMontant(),
-                        "Paiement fournisseur - " + fournisseur.getNom(),
-                        request.getUtilisateurId()
-                );
-                paiement.setOperationCaisse(sortie);
-                log.info("Opération caisse créée pour paiement espèces");
-            } catch (SoldeInsuffisantException e) {
-                throw new SoldeInsuffisantException(
-                        "Solde caisse insuffisant pour payer " + request.getMontant() +
-                                ". Veuillez utiliser un autre mode de paiement (VIREMENT, CHEQUE, BANQUE)."
-                );
-            }
-        } else if (request.getModePaiement() == ModePaiementFournisseur.BANQUE) {
-            if (request.getCompteId() == null)
-                throw new IllegalArgumentException("Le compte bancaire est obligatoire pour un paiement par banque");
-            compteService.debiterCompte(
-                    request.getCompteId(),
-                    request.getMontant(),
-                    "Paiement fournisseur - " + fournisseur.getNom(),
-                    TypeOperationCompte.PAIEMENT_FOURNISSEUR,
-                    request.getUtilisateurId()
-            );
-            paiement.setCompteId(request.getCompteId());
-            log.info("Débit compte bancaire id={} pour paiement fournisseur", request.getCompteId());
-        }
-
-        PaiementFournisseur savedPaiement = paiementRepository.save(paiement);
-        log.info("Paiement sauvegardé: id={}, montant={}", savedPaiement.getId(), savedPaiement.getMontant());
-
-        // Récupérer tous les achats non payés du fournisseur (FIFO - les plus anciens d'abord)
-        List<AchatFournisseur> achatsNonPayes = achatRepository.findByFournisseurIdAndStatutNot(fournisseur.getId(), StatutAchat.PAYE);
-        achatsNonPayes.sort((a1, a2) -> a1.getDateAchat().compareTo(a2.getDateAchat()));
-
-        log.info("Nombre d'achats non payés trouvés: {}", achatsNonPayes.size());
-
-        double montantRestantAPayer = request.getMontant();
-        log.info("Montant à répartir: {}", montantRestantAPayer);
-
-        // Répartir le paiement sur les achats non payés
-        for (AchatFournisseur achat : achatsNonPayes) {
-            if (montantRestantAPayer <= 0.01) {
-                break;
-            }
-
-            double montantDuPourCetAchat = achat.getMontantTotal() - achat.getMontantPaye();
-            log.info("Achat id={}: total={}, dejaPaye={}, du={}, montantRestantAPayer={}",
-                    achat.getId(), achat.getMontantTotal(), achat.getMontantPaye(), montantDuPourCetAchat, montantRestantAPayer);
-
-            if (montantDuPourCetAchat <= montantRestantAPayer + 0.01) {
-                // Ce paiement couvre entièrement cet achat
-                achat.setMontantPaye(achat.getMontantTotal());
-                achat.setMontantRestant(0.0);
-                achat.setStatut(StatutAchat.PAYE);
-                montantRestantAPayer -= montantDuPourCetAchat;
-                log.info("✅ Achat id={} entièrement payé! Nouveau statut=PAYE", achat.getId());
-            } else {
-                // Paiement partiel de cet achat
-                double nouveauPaye = achat.getMontantPaye() + montantRestantAPayer;
-                achat.setMontantPaye(nouveauPaye);
-                achat.setMontantRestant(achat.getMontantTotal() - nouveauPaye);
-                achat.setStatut(StatutAchat.EN_COURS);
-                log.info("⚠️ Achat id={} partiellement payé: nouveauPaye={}, restant={}",
-                        achat.getId(), nouveauPaye, achat.getMontantRestant());
-                montantRestantAPayer = 0;
-            }
-            achatRepository.save(achat);
-        }
-
-        // Mettre à jour le fournisseur APRÈS avoir mis à jour les achats
-        fournisseur.setTotalPaye(fournisseur.getTotalPaye() + request.getMontant());
-        fournisseur.setSolde(fournisseur.getSolde() - request.getMontant());
-        fournisseurRepository.save(fournisseur);
-        log.info("Fournisseur mis à jour: totalPaye={}, nouveau solde={}", fournisseur.getTotalPaye(), fournisseur.getSolde());
-
-        // Vérification finale: s'assurer que tous les achats avec restant <= 0 sont marqués PAYES
-        List<AchatFournisseur> tousLesAchats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseur.getId());
-        for (AchatFournisseur achat : tousLesAchats) {
-            double restant = achat.getMontantTotal() - achat.getMontantPaye();
-            if (restant <= 0.01 && achat.getStatut() != StatutAchat.PAYE) {
-                achat.setStatut(StatutAchat.PAYE);
-                achatRepository.save(achat);
-                log.info("🔧 Correction finale: achat id={} marqué PAYE", achat.getId());
-            }
-            log.info("État final achat id={}: total={}, paye={}, restant={}, statut={}",
-                    achat.getId(), achat.getMontantTotal(), achat.getMontantPaye(),
-                    achat.getMontantTotal() - achat.getMontantPaye(), achat.getStatut());
-        }
-
-        log.info("=== FIN PAIEMENT FOURNISSEUR ===");
-        return savedPaiement;
-    }
+    // ============================================
+    // MÉTHODES DE CONSULTATION
+    // ============================================
 
     @Transactional(readOnly = true)
     public FournisseurCompteDto getSituationFournisseur(Long fournisseurId) {
@@ -318,8 +622,8 @@ public class FournisseurComptableService {
 
         List<AchatFournisseur> achatsRecents = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
 
-        // Recalculer les montants restants et statuts
         for (AchatFournisseur achat : achatsRecents) {
+            if (achat.getStatut() == StatutAchat.ANNULE) continue;
             double restantCalcule = achat.getMontantTotal() - achat.getMontantPaye();
             achat.setMontantRestant(restantCalcule);
             if (restantCalcule <= 0.01) {
@@ -372,6 +676,7 @@ public class FournisseurComptableService {
     public List<AchatFournisseur> getHistoriqueAchats(Long fournisseurId) {
         List<AchatFournisseur> achats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
         for (AchatFournisseur achat : achats) {
+            if (achat.getStatut() == StatutAchat.ANNULE) continue;
             double restantCalcule = achat.getMontantTotal() - achat.getMontantPaye();
             achat.setMontantRestant(restantCalcule);
             if (restantCalcule <= 0.01 && achat.getStatut() != StatutAchat.PAYE) {

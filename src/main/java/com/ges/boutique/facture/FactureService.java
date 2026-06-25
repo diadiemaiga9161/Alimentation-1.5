@@ -12,6 +12,7 @@ public interface FactureService {
 
     // Consultation
     Map<String, Object> obtenirFacture(Long id);
+    Facture obtenirFactureEntite(Long id);
     List<Map<String, Object>> obtenirToutesFactures();
     List<Map<String, Object>> obtenirFacturesParStatut(String statut);
     List<Map<String, Object>> obtenirFacturesParClient(Long clientId);

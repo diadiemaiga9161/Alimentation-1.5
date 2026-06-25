@@ -22,6 +22,7 @@ public interface VenteService {
 
     Vente modifierVente(Long venteId, VenteRequest request);
     Vente modifierVenteCredit(Long venteId, VenteCreditRequest request);
+    Map<String, Object> modifierLignesVente(Long venteId, ModificationLignesRequest request);
     void supprimerVente(Long venteId);
     void supprimerVenteCredit(Long venteId);
     Vente annulerVente(Long venteId, Long utilisateurId, String motif);
@@ -46,4 +47,6 @@ public interface VenteService {
     List<Map<String, Object>> obtenirTopClients();
     List<Map<String, Object>> obtenirTopProduitsParQuantite();
     List<Map<String, Object>> obtenirTopProduitsParChiffreAffaire();
+
+
 }

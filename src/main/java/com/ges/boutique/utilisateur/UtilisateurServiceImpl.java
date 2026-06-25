@@ -91,8 +91,20 @@ public class UtilisateurServiceImpl implements UtilisateurService {
     }
 
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return utilisateurRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé: " + username));
+    @Transactional
+    public Utilisateur mettreAJourPhoto(Long id, String photo) {
+        Utilisateur utilisateur = utilisateurRepository.findById(id)
+                .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        utilisateur.setPhoto(photo);
+        return utilisateurRepository.save(utilisateur);
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
+        // Chercher par username, puis email, puis téléphone
+        return utilisateurRepository.findByUsername(identifier)
+                .or(() -> utilisateurRepository.findByEmail(identifier))
+                .or(() -> utilisateurRepository.findByTelephone(identifier))
+                .orElseThrow(() -> new UsernameNotFoundException("Utilisateur non trouvé: " + identifier));
     }
 }

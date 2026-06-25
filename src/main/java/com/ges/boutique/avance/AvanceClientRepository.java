@@ -21,4 +21,7 @@ public interface AvanceClientRepository extends JpaRepository<AvanceClient, Long
 
     @Query("SELECT a FROM AvanceClient a ORDER BY a.dateDepot DESC")
     List<AvanceClient> findAllOrderByDateDepotDesc();
+
+    @Query("SELECT a FROM AvanceClient a WHERE LOWER(a.clientNom) = LOWER(:nom) AND a.montantUtilise > 0 ORDER BY a.dateDepot DESC")
+    List<AvanceClient> findAvancesUtiliseesByNom(@Param("nom") String nom);
 }

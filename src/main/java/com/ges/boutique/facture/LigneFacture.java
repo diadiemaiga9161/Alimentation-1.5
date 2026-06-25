@@ -29,7 +29,7 @@ public class LigneFacture {
     private Facture facture;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "produit_id", nullable = false)
+    @JoinColumn(name = "produit_id", nullable = true)
     private Produit produit;
 
     @Column(nullable = false)

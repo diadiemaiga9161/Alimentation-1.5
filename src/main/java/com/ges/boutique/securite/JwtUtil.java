@@ -28,11 +28,6 @@ public class JwtUtil {
 
     @PostConstruct
     public void init() {
-        System.out.println("========== JWT INITIALIZATION ==========");
-        System.out.println("Secret: " + secret);
-        System.out.println("Expiration: " + expiration + " ms");
-        System.out.println("========================================");
-
         byte[] keyBytes = secret.getBytes();
         if (keyBytes.length < 32) {
             byte[] padded = new byte[32];

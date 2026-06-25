@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -24,6 +25,7 @@ public class FournisseurAchatController {
 
     private final FournisseurComptableService fournisseurComptableService;
     private final ProduitRepository produitRepository;
+    private final AchatFournisseurRepository achatFournisseurRepository;
 
     @PostMapping("/achat")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
@@ -169,6 +171,66 @@ public class FournisseurAchatController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("paiements", paiementsData);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/achat/{achatId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Détails d'un achat avec ses lignes (produits, quantités, prix)")
+    public ResponseEntity<Map<String, Object>> getAchatById(@PathVariable Long achatId) {
+        AchatFournisseur achat = achatFournisseurRepository.findById(achatId)
+                .orElseThrow(() -> new RuntimeException("Achat non trouvé: " + achatId));
+
+        Map<String, Object> achatData = new HashMap<>();
+        achatData.put("id", achat.getId());
+        achatData.put("dateAchat", achat.getDateAchat());
+        achatData.put("montantTotal", achat.getMontantTotal());
+        achatData.put("montantPaye", achat.getMontantPaye());
+        achatData.put("montantRestant", achat.getMontantRestant());
+        achatData.put("statut", achat.getStatut().toString());
+        achatData.put("commentaire", achat.getCommentaire());
+
+        if (achat.getFournisseur() != null) {
+            Map<String, Object> f = new HashMap<>();
+            f.put("id", achat.getFournisseur().getId());
+            f.put("nom", achat.getFournisseur().getNom());
+            achatData.put("fournisseur", f);
+        }
+
+        List<Map<String, Object>> lignesData = achat.getLignes().stream()
+                .map(ligne -> {
+                    Map<String, Object> ligneMap = new HashMap<>();
+                    ligneMap.put("id", ligne.getId());
+                    ligneMap.put("quantite", ligne.getQuantite());
+                    ligneMap.put("prixAchatUnitaire", ligne.getPrixAchatUnitaire());
+                    ligneMap.put("sousTotal", ligne.getSousTotal());
+                    if (ligne.getProduit() != null) {
+                        Map<String, Object> p = new HashMap<>();
+                        p.put("id", ligne.getProduit().getId());
+                        p.put("nom", ligne.getProduit().getNom());
+                        ligneMap.put("produit", p);
+                    }
+                    return ligneMap;
+                })
+                .collect(Collectors.toList());
+        achatData.put("lignes", lignesData);
+
+        return ResponseEntity.ok(achatData);
+    }
+
+    @PostMapping("/achat/{achatId}/annuler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
+    @Operation(summary = "Annuler un achat fournisseur (retire le stock ajouté et corrige le solde fournisseur)")
+    public ResponseEntity<Map<String, Object>> annulerAchat(
+            @PathVariable Long achatId,
+            @RequestParam(required = false) Long utilisateurId) {
+        AchatFournisseur achat = fournisseurComptableService.annulerAchat(achatId, utilisateurId);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Achat annulé, stock corrigé");
+        response.put("achatId", achat.getId());
+        response.put("statut", achat.getStatut().toString());
         return ResponseEntity.ok(response);
     }
 

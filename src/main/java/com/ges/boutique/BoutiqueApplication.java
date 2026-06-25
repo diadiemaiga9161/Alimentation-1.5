@@ -2,16 +2,15 @@ package com.ges.boutique;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
-import javax.sql.DataSource;
+import org.springframework.scheduling.annotation.EnableAsync;
+import java.util.TimeZone;
 
 @SpringBootApplication
+@EnableAsync
 public class BoutiqueApplication {
 
 	public static void main(String[] args) {
+		TimeZone.setDefault(TimeZone.getTimeZone("Africa/Abidjan"));
 		SpringApplication.run(BoutiqueApplication.class, args);
 	}
 }

@@ -3,10 +3,14 @@ package com.ges.boutique.boutique;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -70,7 +74,46 @@ public class BoutiqueController {
     @Operation(summary = "Modifier la boutique par ID (ignoré)")
     public ResponseEntity<Map<String, Object>> modifierBoutiqueParId(@PathVariable Long id,
                                                                      @RequestBody Boutique boutique) {
-        // L'ID du chemin est ignoré, on utilise la boutique reçue
         return modifierBoutique(boutique);
+    }
+
+    @PostMapping(value = "/upload-logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Uploader le logo de la boutique (PNG, JPG, SVG — max 2 Mo)")
+    public ResponseEntity<Map<String, Object>> uploadLogo(@RequestParam("logo") MultipartFile file) {
+        if (file.isEmpty()) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "Fichier vide");
+            return ResponseEntity.badRequest().body(err);
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/"))) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "Le fichier doit être une image (PNG, JPG, SVG...)");
+            return ResponseEntity.badRequest().body(err);
+        }
+        if (file.getSize() > 2 * 1024 * 1024) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "Le fichier ne doit pas dépasser 2 Mo");
+            return ResponseEntity.badRequest().body(err);
+        }
+        try {
+            byte[] bytes = file.getBytes();
+            String base64 = "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            Boutique boutique = boutiqueService.saveLogo(base64);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Logo mis à jour avec succès");
+            response.put("logo", boutique.getLogo());
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("success", false);
+            err.put("message", "Erreur lors de la lecture du fichier: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(err);
+        }
     }
 }

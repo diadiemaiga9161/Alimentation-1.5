@@ -37,10 +37,11 @@ public class VenteMapper {
         dto.setMontantRestant(vente.getMontantRestant());
         dto.setCreditRegle(vente.getCreditRegle());
 
-        // Champs d'annulation
+        // Champs d'annulation et retour
         dto.setAnnulee(vente.getAnnulee());
         dto.setMotifAnnulation(vente.getMotifAnnulation());
         dto.setDateAnnulation(vente.getDateAnnulation());
+        dto.setEstRetourne(vente.getEstRetourne());
 
         if (vente.getLignes() != null) {
             dto.setLignes(vente.getLignes().stream()
@@ -96,10 +97,11 @@ public class VenteMapper {
         map.put("dateReglement", vente.getDateReglement());
         map.put("creditRegle", vente.getCreditRegle());
 
-        // Champs d'annulation
+        // Champs d'annulation et retour
         map.put("annulee", vente.getAnnulee());
         map.put("motifAnnulation", vente.getMotifAnnulation());
         map.put("dateAnnulation", vente.getDateAnnulation());
+        map.put("estRetourne", vente.getEstRetourne());
 
         map.put("nombreProduits", vente.getLignes() != null ? vente.getLignes().size() : 0);
 

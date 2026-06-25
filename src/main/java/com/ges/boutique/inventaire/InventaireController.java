@@ -7,6 +7,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.time.LocalDateTime;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,7 +31,19 @@ public class InventaireController {
                 Long.valueOf(request.get("utilisateurId").toString()) : null;
         String motif = (String) request.get("motif");
 
-        inventaireService.entreeStock(produitId, quantite, utilisateurId, motif);
+        LocalDateTime dateMouvement = null;
+        if (request.get("dateMouvement") != null) {
+            try {
+                String dateStr = request.get("dateMouvement").toString();
+                // Supprimer le 'Z' ou offset timezone si présent
+                dateStr = dateStr.replaceAll("Z$", "").replaceAll("\\+[0-9]{2}:[0-9]{2}$", "");
+                dateMouvement = LocalDateTime.parse(dateStr);
+            } catch (Exception e) {
+                dateMouvement = LocalDateTime.now();
+            }
+        }
+
+        inventaireService.entreeStock(produitId, quantite, utilisateurId, motif, dateMouvement);
         return ResponseEntity.ok().build();
     }
 
@@ -90,5 +103,12 @@ public class InventaireController {
     @Operation(summary = "Obtenir les statistiques de l'inventaire")
     public ResponseEntity<Map<String, Object>> obtenirStatistiquesInventaire() {
         return ResponseEntity.ok(inventaireService.obtenirStatistiquesInventaire());
+    }
+
+    @GetMapping("/mouvements")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Obtenir tous les mouvements de stock (du plus récent au plus ancien)")
+    public ResponseEntity<List<MouvementStock>> obtenirTousMouvements() {
+        return ResponseEntity.ok(inventaireService.obtenirTousMouvements());
     }
 }
