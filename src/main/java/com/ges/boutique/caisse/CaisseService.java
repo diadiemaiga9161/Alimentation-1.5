@@ -33,7 +33,7 @@ public interface CaisseService {
     OperationCaisse sortieCaisse(Double montant, String motif, Long utilisateurId);
     OperationCaisse enregistrerVente(Vente vente, Long utilisateurId, String modePaiement, String reference);
     OperationCaisse enregistrerVenteCredit(Vente vente, Long utilisateurId, String clientNom, String clientTelephone, LocalDate dateEcheance);
-    OperationCaisse reglementCredit(Long venteCreditId, Double montantRegle, Long utilisateurId, String modePaiement, String reference);
+    OperationCaisse reglementCredit(Long venteCreditId, Double montantRegle, Long utilisateurId, String modePaiement, String reference, String motif, String referenceGroupe);
     OperationCaisse annulerVente(Vente vente, Long utilisateurId, String motif);
     OperationCaisse annulerVenteCredit(Vente vente, Long utilisateurId, String motif);
 
@@ -106,4 +106,7 @@ public interface CaisseService {
     // Dépenses
     OperationCaisse sortieCaisseDepense(Double montant, String motif, Long utilisateurId);
     OperationCaisse entreeCaisseDepense(Double montant, String motif, Long utilisateurId);
+
+    // Paiements groupés
+    List<Map<String, Object>> getPaiementsGroupes();
 }

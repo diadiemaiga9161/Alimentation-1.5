@@ -189,7 +189,9 @@ public class CaisseController {
                 request.getMontantRegle(),
                 request.getUtilisateurId(),
                 request.getModePaiement(),
-                request.getReferencePaiement()
+                request.getReferencePaiement(),
+                request.getMotif(),
+                request.getReferenceGroupe()
         );
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -421,6 +423,13 @@ public class CaisseController {
         response.put("success", true);
         response.put("statistiques", stats);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/paiements-groupes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir l'historique des paiements groupés")
+    public ResponseEntity<List<Map<String, Object>>> getPaiementsGroupes() {
+        return ResponseEntity.ok(caisseService.getPaiementsGroupes());
     }
 
     // ==================== TRANSFERT CAISSE → BANQUE ====================

@@ -8,6 +8,9 @@ import com.ges.boutique.config.NotificationService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.StockInsuffisantException;
 import com.ges.boutique.inventaire.InventaireService;
+import com.ges.boutique.inventaire.MouvementStock;
+import com.ges.boutique.inventaire.MouvementStockRepository;
+import com.ges.boutique.inventaire.TypeMouvement;
 import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitNiveau;
 import com.ges.boutique.produit.ProduitNiveauRepository;
@@ -44,6 +47,7 @@ public class VenteServiceImpl implements VenteService {
     private final ClientRepository clientRepository;
     private final AvanceClientService avanceClientService;
     private final NotificationService notificationService;
+    private final MouvementStockRepository mouvementStockRepository;
 
     // ==================== CRÉATION VENTES ====================
 
@@ -51,24 +55,32 @@ public class VenteServiceImpl implements VenteService {
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
     public Vente creerVente(VenteRequest request) {
-        log.info("Création d'une nouvelle vente COMPTANT pour le vendeur ID: {}", request.getVendeurId());
-
         Vente savedVente = preparerVenteBase(request);
 
-        caisseService.enregistrerVente(savedVente, request.getVendeurId(),
-                request.getModePaiement().toString(), request.getReferencePaiement());
+        if (Boolean.TRUE.equals(savedVente.getEstCredit())) {
+            log.info("Création d'une vente CRÉDIT via commande pour le vendeur ID: {}", request.getVendeurId());
+            // Enregistrement caisse en tant que VENTE_CREDIT pour que l'annulation fonctionne
+            caisseService.enregistrerVenteCredit(savedVente, request.getVendeurId(),
+                    savedVente.getClientNom(), savedVente.getClientTelephone(), request.getDateEcheance());
+            notificationService.notifierNouvelleVente(Map.of(
+                    "id", savedVente.getId(),
+                    "numeroVente", savedVente.getNumeroVente(),
+                    "montantTotal", savedVente.getMontantTotal(),
+                    "type", "CREDIT"
+            ));
+        } else {
+            log.info("Création d'une vente COMPTANT pour le vendeur ID: {}", request.getVendeurId());
+            caisseService.enregistrerVente(savedVente, request.getVendeurId(),
+                    request.getModePaiement().toString(), request.getReferencePaiement());
+            notificationService.notifierNouvelleVente(Map.of(
+                    "id", savedVente.getId(),
+                    "numeroVente", savedVente.getNumeroVente(),
+                    "montantTotal", savedVente.getMontantTotal(),
+                    "type", "COMPTANT"
+            ));
+        }
 
-        log.info("Vente comptant créée - Numéro: {}, Montant: {}", savedVente.getNumeroVente(), savedVente.getMontantTotal());
-
-        // Notification temps réel
-        notificationService.notifierNouvelleVente(Map.of(
-                "id", savedVente.getId(),
-                "numeroVente", savedVente.getNumeroVente(),
-                "montantTotal", savedVente.getMontantTotal(),
-                "type", "COMPTANT"
-        ));
         notificationService.notifierMiseAJourDashboard();
-
         return savedVente;
     }
 
@@ -202,6 +214,11 @@ public class VenteServiceImpl implements VenteService {
     @Override
     public List<Vente> obtenirCreditsNonRegles() {
         return venteRepository.findCreditsNonRegles();
+    }
+
+    @Override
+    public List<Vente> obtenirCreditsRegles() {
+        return venteRepository.findCreditsRegles();
     }
 
     @Override
@@ -485,9 +502,18 @@ public class VenteServiceImpl implements VenteService {
         LocalDate dateReglement = request.getDateReglement() != null ? request.getDateReglement() : LocalDate.now();
         String modePaiement = request.getModePaiement() != null ? request.getModePaiement() : "ESPECES";
 
-        caisseService.reglementCredit(venteId, request.getMontantRegle(), request.getUtilisateurId(), modePaiement, request.getReferencePaiement());
+        caisseService.reglementCredit(venteId, request.getMontantRegle(), request.getUtilisateurId(), modePaiement, request.getReferencePaiement(), null, null);
 
         vente.enregistrerReglement(request.getMontantRegle(), dateReglement);
+
+        // Traçabilité : qui a réglé le crédit
+        if (request.getUtilisateurId() != null) {
+            utilisateurRepository.findById(request.getUtilisateurId()).ifPresent(u -> {
+                vente.setReglePar(u);
+                vente.setRegleParNom(u.getNomComplet() != null ? u.getNomComplet() : u.getUsername());
+            });
+        }
+
         return venteRepository.save(vente);
     }
 
@@ -743,10 +769,18 @@ public class VenteServiceImpl implements VenteService {
         vente.setVendeur(vendeur);
         vente.setModePaiement(request.getModePaiement());
         vente.setReferencePaiement(request.getReferencePaiement());
-        vente.setEstCredit(request.getEstCredit() != null && request.getEstCredit());
-        vente.setMontantVerse(0.0);
-        vente.setMontantRestant(0.0);
-        vente.setCreditRegle(false);
+        boolean estCredit = request.getEstCredit() != null && request.getEstCredit();
+        vente.setEstCredit(estCredit);
+        if (estCredit) {
+            double montantVerse = request.getMontantVerse() != null ? request.getMontantVerse() : 0.0;
+            vente.setMontantVerse(montantVerse);
+            vente.setDateEcheance(request.getDateEcheance());
+            vente.setCreditRegle(false);
+        } else {
+            vente.setMontantVerse(0.0);
+            vente.setMontantRestant(0.0);
+            vente.setCreditRegle(false);
+        }
 
         gererClientVente(vente, request);
 
@@ -769,6 +803,13 @@ public class VenteServiceImpl implements VenteService {
             vente.setClientRequestId(request.getClientRequestId());
         }
 
+        // Pour les ventes crédit : recalculer montantRestant après calculerTotal()
+        if (Boolean.TRUE.equals(vente.getEstCredit())) {
+            double verse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0;
+            vente.setMontantRestant(vente.getMontantTotal() - verse);
+            vente.setCreditRegle(vente.getMontantRestant() <= 0);
+        }
+
         Vente savedVente = venteRepository.save(vente);
         mettreAJourStockVente(savedVente);
         return savedVente;
@@ -787,7 +828,7 @@ public class VenteServiceImpl implements VenteService {
             throw new IllegalArgumentException("La référence de paiement est requise");
         }
 
-        // Lignes sans niveauId : agrégation par produit (comportement existant)
+        // Lignes sans niveauId : vérification selon présence de niveaux
         Map<Long, Integer> quantitesParProduit = new HashMap<>();
         for (LigneVenteRequest ligne : request.getLignes()) {
             if (ligne.getProduitId() == null) throw new IllegalArgumentException("L'ID produit est requis");
@@ -803,9 +844,19 @@ public class VenteServiceImpl implements VenteService {
         for (Map.Entry<Long, Integer> entry : quantitesParProduit.entrySet()) {
             Produit produit = produitRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + entry.getKey()));
-            if (produit.getQuantite() < entry.getValue()) {
-                throw new StockInsuffisantException("Stock insuffisant pour " + produit.getNom() +
-                        ". Disponible: " + produit.getQuantite() + ", Demandé: " + entry.getValue());
+            List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+            if (!niveaux.isEmpty()) {
+                // Produit avec niveaux : utiliser le stock total calculé depuis les niveaux
+                long stockTotal = calculerStockTotalNiveaux(niveaux);
+                if (stockTotal < entry.getValue()) {
+                    throw new StockInsuffisantException("Stock insuffisant pour " + produit.getNom() +
+                            ". Disponible: " + stockTotal + " unités base, Demandé: " + entry.getValue());
+                }
+            } else {
+                if (produit.getQuantite() < entry.getValue()) {
+                    throw new StockInsuffisantException("Stock insuffisant pour " + produit.getNom() +
+                            ". Disponible: " + produit.getQuantite() + ", Demandé: " + entry.getValue());
+                }
             }
         }
 
@@ -828,22 +879,19 @@ public class VenteServiceImpl implements VenteService {
         }
     }
 
-    private long calculerDisponibleNiveau(ProduitNiveau niveau, List<ProduitNiveau> sortedNiveaux, Produit produit) {
-        int idx = -1;
-        for (int i = 0; i < sortedNiveaux.size(); i++) {
-            if (sortedNiveaux.get(i).getId().equals(niveau.getId())) { idx = i; break; }
-        }
+    private long calculerDisponibleNiveau(ProduitNiveau niveau, List<ProduitNiveau> niveaux, Produit produit) {
         long direct = niveau.getStock() != null ? niveau.getStock() : 0L;
-        if (idx == 0) {
-            // Parent direct = produit (ex: stock de Cartons)
-            long produitQte = produit.getQuantite() != null ? produit.getQuantite() : 0L;
-            return direct + produitQte * niveau.getFacteur();
-        } else {
-            // Parent direct uniquement — jamais de saut de 2 niveaux ou plus
-            ProduitNiveau parent = sortedNiveaux.get(idx - 1);
-            long parentStock = parent.getStock() != null ? parent.getStock() : 0L;
-            return direct + parentStock * niveau.getFacteur();
+        if (niveau.getParentId() == null) {
+            // Niveau racine : stock propre uniquement
+            return direct;
         }
+        // Parent direct uniquement — jamais de saut de 2 niveaux ou plus
+        ProduitNiveau parent = niveaux.stream()
+                .filter(n -> n.getId().equals(niveau.getParentId()))
+                .findFirst().orElse(null);
+        if (parent == null) return direct;
+        long parentStock = parent.getStock() != null ? parent.getStock() : 0L;
+        return direct + parentStock * niveau.getFacteur();
     }
 
     private LigneVente creerLigneVente(LigneVenteRequest ligneRequest) {
@@ -923,14 +971,32 @@ public class VenteServiceImpl implements VenteService {
     }
 
     private void mettreAJourStockVente(Vente vente) {
+        List<MouvementStock> mouvementsNiveaux = new ArrayList<>();
+
         for (LigneVente ligne : vente.getLignes()) {
             Long produitId = ligne.getProduit().getId();
 
             if (ligne.getNiveauId() == null) {
-                // Vente au niveau produit : déduction directe du stock produit
-                int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
-                inventaireService.sortieStock(produitId, ligne.getQuantite() * facteur,
-                        vente.getVendeur().getId(), "Vente N°" + vente.getNumeroVente());
+                List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+                if (!niveaux.isEmpty()) {
+                    // Produit avec niveaux : déduire depuis le niveau feuille (base) via cascade
+                    Produit produit = produitRepository.findById(produitId)
+                            .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + produitId));
+                    ProduitNiveau niveauFeuille = trouverNiveauFeuille(niveaux);
+                    int facteur = ligne.getNiveauFacteur() != null && ligne.getNiveauFacteur() > 1 ? ligne.getNiveauFacteur() : 1;
+                    int qteFeuille = ligne.getQuantite() * facteur;
+                    for (int i = 0; i < qteFeuille; i++) {
+                        mouvementsNiveaux.addAll(deductUniteNiveauCascade(produit, niveaux, niveauFeuille));
+                    }
+                    niveauRepository.saveAll(niveaux);
+                    List<ProduitNiveau> niveauxUpdated = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+                    syncProduitQuantite(produit, niveauxUpdated);
+                } else {
+                    // Produit sans niveaux : déduction directe du stock produit
+                    int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
+                    inventaireService.sortieStockVente(produitId, ligne.getQuantite() * facteur,
+                            vente.getVendeur() != null ? vente.getVendeur().getId() : null, vente.getId());
+                }
             } else {
                 // Vente par niveau : déduction cascade
                 Produit produit = produitRepository.findById(produitId)
@@ -942,53 +1008,102 @@ public class VenteServiceImpl implements VenteService {
                         .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + ligne.getNiveauId()));
 
                 for (int i = 0; i < ligne.getQuantite(); i++) {
-                    deductUniteNiveauCascade(produit, niveaux, niveauVendu);
+                    mouvementsNiveaux.addAll(deductUniteNiveauCascade(produit, niveaux, niveauVendu));
                 }
-                produitRepository.save(produit);
                 niveauRepository.saveAll(niveaux);
+                // Synchroniser Produit.quantite avec le total des stocks niveaux
+                List<ProduitNiveau> niveauxUpdated = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+                syncProduitQuantite(produit, niveauxUpdated);
             }
 
             produitRepository.findById(produitId).ifPresent(p ->
                     notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite()));
         }
+
+        if (!mouvementsNiveaux.isEmpty()) {
+            mouvementStockRepository.saveAll(mouvementsNiveaux);
+        }
     }
 
-    private void deductUniteNiveauCascade(Produit produit, List<ProduitNiveau> sortedNiveaux, ProduitNiveau target) {
+    /**
+     * Déduit 1 unité du niveau target et cascade vers le parent si stock épuisé.
+     * Retourne la liste des mouvements de stock générés (SORTIE pour vente directe,
+     * SORTIE+AJUSTEMENT lors d'une décomposition cascade).
+     */
+    private List<MouvementStock> deductUniteNiveauCascade(Produit produit, List<ProduitNiveau> niveaux, ProduitNiveau target) {
+        List<MouvementStock> mouvements = new ArrayList<>();
         int stock = target.getStock() != null ? target.getStock() : 0;
 
         if (stock > 0) {
+            // Déduction directe depuis le niveau cible
             target.setStock(stock - 1);
-            return;
+            mouvements.add(creerMouvementNiveau(
+                    produit, target,
+                    TypeMouvement.SORTIE,
+                    stock, stock - 1,
+                    "Vente - " + produit.getNom() + " [" + target.getNom() + "]"
+            ));
+            return mouvements;
         }
 
         // Stock épuisé → un seul cran vers le parent direct (jamais saut de 2 niveaux)
-        int idx = -1;
-        for (int i = 0; i < sortedNiveaux.size(); i++) {
-            if (sortedNiveaux.get(i).getId().equals(target.getId())) { idx = i; break; }
+        if (target.getParentId() == null) {
+            throw new StockInsuffisantException("Stock " + target.getNom() +
+                    " de " + produit.getNom() + " épuisé. Ajoutez du stock dans ce niveau.");
         }
 
-        if (idx == 0) {
-            // Parent direct = produit (ex: Cartons)
-            if (produit.getQuantite() == null || produit.getQuantite() < 1) {
-                throw new StockInsuffisantException("Stock " + produit.getNom() +
-                        " insuffisant pour décomposer en " + target.getNom());
-            }
-            produit.setQuantite(produit.getQuantite() - 1);
-            target.setStock(target.getFacteur() - 1);
-        } else {
-            // Parent direct = niveau supérieur immédiat
-            ProduitNiveau parent = sortedNiveaux.get(idx - 1);
-            int parentStock = parent.getStock() != null ? parent.getStock() : 0;
-            if (parentStock < 1) {
-                // Pas de remontée automatique — l'utilisateur doit décomposer manuellement
-                String grandParentNom = (idx == 1) ? produit.getNom() : sortedNiveaux.get(idx - 2).getNom();
-                throw new StockInsuffisantException("Stock " + parent.getNom() +
-                        " épuisé. Décomposez d'abord " + grandParentNom + " → " + parent.getNom() +
-                        " avant de vendre en " + target.getNom());
-            }
-            parent.setStock(parentStock - 1);
-            target.setStock(target.getFacteur() - 1);
+        ProduitNiveau parent = niveaux.stream()
+                .filter(n -> n.getId().equals(target.getParentId()))
+                .findFirst()
+                .orElseThrow(() -> new StockInsuffisantException("Niveau parent introuvable pour " + target.getNom()));
+
+        int parentStock = parent.getStock() != null ? parent.getStock() : 0;
+        if (parentStock < 1) {
+            // Pas de remontée automatique — l'utilisateur doit ouvrir manuellement
+            String grandParentNom = parent.getParentId() == null ? produit.getNom() :
+                    niveaux.stream().filter(n -> n.getId().equals(parent.getParentId()))
+                            .findFirst().map(ProduitNiveau::getNom).orElse("le niveau supérieur");
+            throw new StockInsuffisantException("Plus de " + parent.getNom() +
+                    ". Ouvrez d'abord " + grandParentNom + " → " + parent.getNom() +
+                    " avant de vendre en " + target.getNom());
         }
+
+        // Cascade : décompose 1 parent → facteur unités target, puis consomme 1
+        int facteur = target.getFacteur() != null ? target.getFacteur() : 1;
+        parent.setStock(parentStock - 1);
+        target.setStock(facteur - 1);
+
+        // SORTIE sur le parent (décomposition)
+        mouvements.add(creerMouvementNiveau(
+                produit, parent,
+                TypeMouvement.SORTIE,
+                parentStock, parentStock - 1,
+                "Décomposition cascade - " + parent.getNom() + " → " + target.getNom()
+        ));
+        // AJUSTEMENT sur le target (stock reconstitué puis 1 consommé = facteur-1 restant)
+        mouvements.add(creerMouvementNiveau(
+                produit, target,
+                TypeMouvement.AJUSTEMENT,
+                0, facteur - 1,
+                "Cascade depuis " + parent.getNom() + " (+" + (facteur - 1) + " " + target.getNom() + ")"
+        ));
+
+        return mouvements;
+    }
+
+    private MouvementStock creerMouvementNiveau(Produit produit, ProduitNiveau niveau,
+            TypeMouvement type, int qteAvant, int qteApres, String motif) {
+        MouvementStock m = new MouvementStock();
+        m.setProduit(produit);
+        m.setQuantite(Math.abs(qteApres - qteAvant));
+        m.setTypeMouvement(type);
+        m.setQuantiteAvant(qteAvant);
+        m.setQuantiteApres(qteApres);
+        m.setNiveauId(niveau.getId());
+        m.setNiveauNom(niveau.getNom());
+        m.setMotif(motif);
+        m.setReferenceType("VENTE_NIVEAU");
+        return m;
     }
 
     // ==================== MODIFICATION LIGNES AVEC AJUSTEMENT CAISSE ====================
@@ -1086,8 +1201,56 @@ public class VenteServiceImpl implements VenteService {
                     int stockActuel = niveau.getStock() != null ? niveau.getStock() : 0;
                     niveau.setStock(stockActuel + ligne.getQuantite());
                     niveauRepository.save(niveau);
+
+                    // Synchroniser Produit.quantite
+                    Produit produit = niveau.getProduit();
+                    List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+                    syncProduitQuantite(produit, niveaux);
                 });
             }
         }
+    }
+
+    // ── Synchronisation Produit.quantite ──────────────────────────────────────
+
+    private void syncProduitQuantite(Produit produit, List<ProduitNiveau> niveaux) {
+        long total = 0;
+        for (ProduitNiveau n : niveaux) {
+            long f = facteurVersBase(n, niveaux);
+            total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        produit.setQuantite((int) total);
+        produitRepository.save(produit);
+    }
+
+    private long facteurVersBase(ProduitNiveau niveau, List<ProduitNiveau> niveaux) {
+        ProduitNiveau child = niveaux.stream()
+                .filter(n -> niveau.getId().equals(n.getParentId()))
+                .findFirst().orElse(null);
+        if (child == null) return 1L; // feuille = unité de base
+        return child.getFacteur() * facteurVersBase(child, niveaux);
+    }
+
+    // Niveau feuille = celui qui n'a aucun enfant (le plus petit conditionnement)
+    private ProduitNiveau trouverNiveauFeuille(List<ProduitNiveau> niveaux) {
+        Set<Long> parentsIds = niveaux.stream()
+                .map(ProduitNiveau::getParentId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        // Feuille = niveau dont l'id n'est le parentId d'aucun autre niveau
+        return niveaux.stream()
+                .filter(n -> !parentsIds.contains(n.getId()))
+                .findFirst()
+                .orElse(niveaux.get(niveaux.size() - 1));
+    }
+
+    // Stock total en unités de base (pour ventes sans niveauId sur produit avec niveaux)
+    private long calculerStockTotalNiveaux(List<ProduitNiveau> niveaux) {
+        long total = 0;
+        for (ProduitNiveau n : niveaux) {
+            long f = facteurVersBase(n, niveaux);
+            total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        return total;
     }
 }

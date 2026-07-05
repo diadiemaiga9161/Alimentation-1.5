@@ -86,6 +86,9 @@ public class OperationCaisse {
     @Column(name = "vente_annulee")
     private Boolean venteAnnulee = false;
 
+    @Column(name = "reference_groupe")
+    private String referenceGroupe;
+
     @PrePersist
     protected void onCreate() {
         dateOperation = LocalDateTime.now();

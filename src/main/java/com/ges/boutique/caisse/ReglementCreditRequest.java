@@ -10,4 +10,6 @@ public class ReglementCreditRequest {
     private String modePaiement;
     private String referencePaiement;
     private String dateReglement;
+    private String motif;
+    private String referenceGroupe;
 }

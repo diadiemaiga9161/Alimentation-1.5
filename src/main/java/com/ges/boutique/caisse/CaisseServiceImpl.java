@@ -773,7 +773,7 @@ public class CaisseServiceImpl implements CaisseService {
     @Transactional
     public OperationCaisse reglementCredit(Long venteCreditId, Double montantRegle,
                                            Long utilisateurId, String modePaiement,
-                                           String reference) {
+                                           String reference, String motif, String referenceGroupe) {
         Vente vente = venteRepository.findById(venteCreditId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Vente non trouvée avec l'ID: " + venteCreditId));
 
@@ -837,7 +837,10 @@ public class CaisseServiceImpl implements CaisseService {
         reglementOperation.setMontant(montantRegle);
         reglementOperation.setSoldeAvant(soldeAvant);
         reglementOperation.setSoldeApres(caisse.getSoldeActuel());
-        reglementOperation.setMotif("Règlement crédit - Vente N°" + vente.getNumeroVente());
+        String motifFinal = (motif != null && !motif.isBlank())
+                ? motif
+                : "Règlement crédit - Vente N°" + vente.getNumeroVente();
+        reglementOperation.setMotif(motifFinal);
         reglementOperation.setVente(vente);
         reglementOperation.setEstReglee(true);
         reglementOperation.setDateOperation(LocalDateTime.now());
@@ -859,6 +862,7 @@ public class CaisseServiceImpl implements CaisseService {
             }
         }
         reglementOperation.setReferencePaiement(reference);
+        reglementOperation.setReferenceGroupe(referenceGroupe);
 
         return operationRepository.save(reglementOperation);
     }
@@ -967,14 +971,16 @@ public class CaisseServiceImpl implements CaisseService {
         verifierEtOuvrirCaisseSiNecessaire();
         Caisse caisse = getCaisseOuverte();
 
+        // Chercher l'opération VENTE_CREDIT — peut être absente pour les commandes créées avant le fix
         Optional<OperationCaisse> creditOperationOpt = operationRepository.findFirstByVenteIdAndType(
                 vente.getId(), TypeOperationCaisse.VENTE_CREDIT);
 
+        // Si pas d'opération VENTE_CREDIT, chercher une VENTE_COMPTANT (commandes validées avant le fix)
         if (creditOperationOpt.isEmpty()) {
-            throw new IllegalStateException("Opération de crédit non trouvée en caisse");
+            creditOperationOpt = operationRepository.findFirstByVenteIdAndType(
+                    vente.getId(), TypeOperationCaisse.VENTE_COMPTANT);
+            log.warn("Aucune opération VENTE_CREDIT pour la vente {} — utilisation de VENTE_COMPTANT comme fallback", vente.getNumeroVente());
         }
-
-        OperationCaisse creditOperation = creditOperationOpt.get();
 
         Double soldeAvant = caisse.getSoldeActuel();
 
@@ -1002,13 +1008,46 @@ public class CaisseServiceImpl implements CaisseService {
 
         OperationCaisse savedOperation = operationRepository.save(operation);
 
-        creditOperation.setVenteAnnulee(true);
-        operationRepository.save(creditOperation);
+        // Marquer l'opération originale (VENTE_CREDIT ou VENTE_COMPTANT) comme annulée
+        if (creditOperationOpt.isPresent()) {
+            creditOperationOpt.get().setVenteAnnulee(true);
+            operationRepository.save(creditOperationOpt.get());
+        }
 
         List<OperationCaisse> reglements = operationRepository.findReglementsByVenteCredit(vente.getId());
         for (OperationCaisse reglement : reglements) {
             reglement.setVenteAnnulee(true);
             operationRepository.save(reglement);
+        }
+
+        // Si le client a déjà versé de l'argent → créer un remboursement
+        double montantVerse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0;
+        if (montantVerse > 0) {
+            log.info("Remboursement de {} FCFA au client {} suite à annulation crédit {}", montantVerse, vente.getClientNom(), vente.getNumeroVente());
+            double soldeAvantRemb = caisse.getSoldeActuel();
+            caisse.setSoldeActuel(soldeAvantRemb - montantVerse);
+            caisse.setTotalSorties(caisse.getTotalSorties() + montantVerse);
+            caisse.setDerniereOperation(LocalDateTime.now());
+            caisseRepository.save(caisse);
+
+            OperationCaisse remboursement = new OperationCaisse();
+            remboursement.setCaisse(caisse);
+            remboursement.setType(TypeOperationCaisse.REMBOURSEMENT_COMMANDE);
+            remboursement.setMontant(montantVerse);
+            remboursement.setSoldeAvant(soldeAvantRemb);
+            remboursement.setSoldeApres(caisse.getSoldeActuel());
+            remboursement.setMotif("Remboursement client " + (vente.getClientNom() != null ? vente.getClientNom() : "") +
+                    " — annulation commande/crédit N°" + vente.getNumeroVente());
+            remboursement.setVente(vente);
+            remboursement.setClientNom(vente.getClientNom());
+            remboursement.setClientTelephone(vente.getClientTelephone());
+            remboursement.setDateOperation(LocalDateTime.now());
+            remboursement.setEstReglee(true);
+            remboursement.setVenteAnnulee(true);
+            if (utilisateurId != null) {
+                utilisateurRepository.findById(utilisateurId).ifPresent(remboursement::setUtilisateur);
+            }
+            operationRepository.save(remboursement);
         }
 
         return savedOperation;
@@ -1721,6 +1760,97 @@ public class CaisseServiceImpl implements CaisseService {
         response.put("dateTransfert", trace.getDateTransfert());
 
         return response;
+    }
+
+    // ==================== PAIEMENTS GROUPES ====================
+
+    @Override
+    public List<Map<String, Object>> getPaiementsGroupes() {
+        // Récupérer toutes les opérations de règlement avec motif "Paiement groupé"
+        List<OperationCaisse> ops = operationRepository.findAll().stream()
+            .filter(op -> TypeOperationCaisse.REGLEMENT_CREDIT.equals(op.getType())
+                       && op.getMotif() != null
+                       && op.getMotif().contains("Paiement group"))
+            .collect(java.util.stream.Collectors.toList());
+
+        // Grouper par referenceGroupe si présent, sinon par (clientNom + date jour + montant motif)
+        Map<String, List<OperationCaisse>> grouped = new java.util.LinkedHashMap<>();
+        for (OperationCaisse op : ops) {
+            String key;
+            if (op.getReferenceGroupe() != null && !op.getReferenceGroupe().isEmpty()) {
+                key = op.getReferenceGroupe();
+            } else {
+                String motif = op.getMotif();
+                String montantStr;
+                if (motif != null && motif.contains(":")) {
+                    montantStr = motif.substring(motif.lastIndexOf(":") + 1).trim();
+                } else {
+                    montantStr = "0";
+                }
+                String dateJour = op.getDateOperation() != null
+                    ? op.getDateOperation().toString().substring(0, 10)
+                    : "?";
+                key = (op.getClientNom() != null ? op.getClientNom() : "?") + "_" + dateJour + "_" + montantStr;
+            }
+            grouped.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(op);
+        }
+
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<OperationCaisse>> entry : grouped.entrySet()) {
+            List<OperationCaisse> groupe = entry.getValue();
+            OperationCaisse first = groupe.get(0);
+
+            // Extraire montant total du motif
+            String motif = first.getMotif();
+            double montantTotal = 0;
+            try {
+                if (motif != null && motif.contains(":")) {
+                    montantTotal = Double.parseDouble(motif.substring(motif.lastIndexOf(":") + 1).trim());
+                }
+            } catch (NumberFormatException e) { /* ignore */ }
+
+            // Construire la liste des ventes impliquées
+            List<Map<String, Object>> ventesImpliquees = new java.util.ArrayList<>();
+            for (OperationCaisse op : groupe) {
+                Map<String, Object> v = new java.util.LinkedHashMap<>();
+                v.put("venteCreditId", op.getVenteCreditId());
+                v.put("montantApplique", op.getMontant());
+                String statut = "INCONNU";
+                try {
+                    if (op.getVenteCreditId() != null) {
+                        Vente vente = venteRepository.findById(op.getVenteCreditId()).orElse(null);
+                        if (vente != null) {
+                            double verse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0;
+                            double total = vente.getMontantTotal() != null ? vente.getMontantTotal() : 0;
+                            statut = verse >= total ? "REGLE" : "EN_COURS";
+                            v.put("resteARegler", Math.max(0, total - verse));
+                            v.put("numeroVente", vente.getNumeroVente());
+                        }
+                    }
+                } catch (Exception e) { /* ignore */ }
+                v.put("statutCredit", statut);
+                ventesImpliquees.add(v);
+            }
+
+            Map<String, Object> session = new java.util.LinkedHashMap<>();
+            session.put("referenceGroupe", entry.getKey());
+            session.put("clientNom", first.getClientNom());
+            session.put("date", first.getDateOperation());
+            session.put("montantTotalApporte", montantTotal);
+            session.put("ventesImpliquees", ventesImpliquees);
+            result.add(session);
+        }
+
+        // Trier par date décroissante
+        result.sort((a, b) -> {
+            Object da = a.get("date");
+            Object db = b.get("date");
+            if (da == null) return 1;
+            if (db == null) return -1;
+            return db.toString().compareTo(da.toString());
+        });
+
+        return result;
     }
 
     // ==================== METHODES PRIVEES ====================
