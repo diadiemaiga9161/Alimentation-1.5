@@ -35,6 +35,9 @@ public class Client {
     @Column(name = "email")
     private String email;
 
+    @Column(nullable = false)
+    private boolean partenaire = false;
+
     @Column(name = "date_creation", nullable = false)
     private LocalDateTime dateCreation;
 

@@ -29,4 +29,6 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     long countVentesActivesByClientId(@Param("clientId") Long clientId);
 
     boolean existsByNumeroTelephone(String numeroTelephone);
+
+    List<Client> findByPartenaireTrue();
 }

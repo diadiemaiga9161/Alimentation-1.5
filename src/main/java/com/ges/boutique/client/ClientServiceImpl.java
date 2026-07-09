@@ -46,6 +46,7 @@ public class ClientServiceImpl implements ClientService {
         existingClient.setNumeroTelephone(client.getNumeroTelephone());
         existingClient.setAdresse(client.getAdresse());
         existingClient.setEmail(client.getEmail());
+        existingClient.setPartenaire(client.isPartenaire());
 
         return clientRepository.save(existingClient);
     }
@@ -97,6 +98,11 @@ public class ClientServiceImpl implements ClientService {
     @Override
     public List<Object[]> trouverTopClientsParMontant() {
         return clientRepository.findTopClientsByMontant();
+    }
+
+    @Override
+    public List<Client> getPartenaires() {
+        return clientRepository.findByPartenaireTrue();
     }
 
     private void preparerEtValiderClient(Client client) {

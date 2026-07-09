@@ -22,4 +22,6 @@ public interface ClientService {
     List<Client> trouverTousTriesParDateCreation();
 
     List<Object[]> trouverTopClientsParMontant();
+
+    List<Client> getPartenaires();
 }

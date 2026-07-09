@@ -114,6 +114,17 @@ public class ClientController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/partenaires")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> getPartenaires() {
+        List<Client> partenaires = clientService.getPartenaires();
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("clients", partenaires);
+        response.put("nombreClients", partenaires.size());
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/top-clients")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     public ResponseEntity<Map<String, Object>> trouverTopClients() {
