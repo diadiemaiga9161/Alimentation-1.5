@@ -75,10 +75,7 @@ public class DataInitializer implements CommandLineRunner {
         gestionnaire.setActif(true);
         utilisateurRepository.save(gestionnaire);
 
-        System.out.println("✅ Utilisateurs par défaut créés:");
-        System.out.println("   Admin: admin / admin123");
-        System.out.println("   Vendeur: vendeur / vendeur123");
-        System.out.println("   Gestionnaire: gestionnaire / gestion123");
+        System.out.println("✅ Utilisateurs par défaut créés.");
     }
 
     private void creerBoutiqueParDefaut() {
