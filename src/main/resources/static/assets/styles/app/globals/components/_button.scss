@@ -1,0 +1,153 @@
+@use "sass:color";
+@use "../../themes/themes" as theme;
+@use "../../variables" as var;
+html [type="button"], .btn[type="button"] {
+    -webkit-appearance: none !important;
+}
+.btn {
+    &.rounded, &.btn-rounded {
+        border-radius: 40px;
+    }
+    &.btn-wide {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+.btn-secondary {
+    color: theme.$foreground;
+    background-color: theme.$gray-200;
+}
+
+.btn-icon {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    [class^="i-"], .icon {
+        vertical-align: middle;
+        margin: 0 2px;
+        -webkit-font-smoothing: subpixel-antialiased;
+    }
+}
+.btn-icon-text {
+    [class^="i-"], .icon {
+        vertical-align: middle;
+        margin: 0 2px;
+        -webkit-font-smoothing: subpixel-antialiased;
+    }
+}
+
+.btn-facebook {
+    background: var.$facebook;
+    border-color: var.$facebook;
+    &:hover {
+        background: color.adjust(var.$facebook, $lightness: -5%);
+        border-color: color.adjust(var.$facebook, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$facebook, 0.5)
+    }
+}
+.btn-facebook {
+    background: var.$google;
+    border-color: var.$google;
+    &:hover {
+        background: color.adjust(var.$google, $lightness: -5%);
+        border-color: color.adjust(var.$google, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$google, 0.5)
+    }
+}
+.btn-twitter {
+    background: var.$twitter;
+    border-color: var.$twitter;
+    &:hover {
+        background: color.adjust(var.$twitter, $lightness: -5%);
+        border-color: color.adjust(var.$twitter, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$twitter, 0.5)
+    }
+}
+
+.btn-outline-facebook {
+    color: var.$facebook;
+    border-color: var.$facebook;
+    background: rgba(theme.$gray-200, .6);
+    &:hover {
+        background: color.adjust(var.$facebook, $lightness: -5%);
+        border-color: color.adjust(var.$facebook, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$facebook, 0.5)
+    }
+}
+.btn-outline-google {
+    color: var.$google;
+    border-color: var.$google;
+    background: rgba(theme.$gray-200, .6);
+    &:hover {
+        background: color.adjust(var.$google, $lightness: -5%);
+        border-color: color.adjust(var.$google, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$google, 0.5)
+    }
+}
+.btn-outline-twitter {
+    color: var.$twitter;
+    border-color: var.$twitter;
+    background: rgba(theme.$gray-200, .6);
+    &:hover {
+        background: color.adjust(var.$twitter, $lightness: -5%);
+        border-color: color.adjust(var.$twitter, $lightness: -5%);
+    }
+    &:focus {
+        box-shadow: 0 0 0 0.2rem rgba(var.$twitter, 0.5)
+    }
+}
+
+.btn-outline-email {
+    background: rgba(theme.$gray-200, .6);
+}
+
+.btn-spinner {
+    width: 1em;
+    height: 1em;
+    background: transparent;
+    border-radius: 50%;
+    margin: 0 16px 0 0;
+    border: 2px solid transparent;
+}
+.btn-checkbox {
+    .checkbox {
+        display: inline;
+    }
+}
+
+.btn.btn-outline-light.btn-svg {
+    border-color: theme.$gray-700;
+    &.active, &:hover {
+        background: theme.$primary;
+        border-color: theme.$primary;
+        svg {
+            fill: #ffffff;
+        }
+    }
+    &:focus {
+        box-shadow: none !important;
+    }
+}
+
+@each $name, $value in theme.$theme-colors {
+    .btn-#{$name} {
+        .btn-spinner {
+            animation: btn-glow-#{$name} 1s ease infinite;
+        }
+    }
+    @keyframes btn-glow-#{$name} {
+        0% { box-shadow: 0 0 0 .4em color.adjust($value, $lightness: -10%), 0 0 0 .1em color.adjust($value, $lightness: -10%); transform:rotate(360deg); }
+        50% { border-top-color: #ffffff;}
+        100% { box-shadow: 0 0 0 .4em color.adjust($value, $lightness: -10%), 0 0 0 1.2em transparent; }
+    }
+}

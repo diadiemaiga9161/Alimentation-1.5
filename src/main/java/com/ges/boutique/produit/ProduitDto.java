@@ -2,6 +2,7 @@ package com.ges.boutique.produit;
 
 import lombok.Data;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 public class ProduitDto {
@@ -32,4 +33,5 @@ public class ProduitDto {
     private Double marge;
     private Double tauxMarge;
     private Long joursAvantPeremption;
+    private List<ProduitNiveauDto> niveaux;
 }

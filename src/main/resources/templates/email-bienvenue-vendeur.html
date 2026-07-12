@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenue sur MG Boutique</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f1f5f9; font-family: 'Segoe UI', Arial, sans-serif; }
+    .wrapper { max-width: 560px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #1d4ed8, #2563eb); padding: 32px 40px; text-align: center; }
+    .header h1 { color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; }
+    .header p { color: #bfdbfe; margin: 6px 0 0; font-size: 13px; }
+    .body { padding: 36px 40px; }
+    .body p { color: #374151; font-size: 15px; line-height: 1.7; margin: 0 0 16px; }
+    .body p.greeting { font-size: 17px; font-weight: 600; color: #1e293b; }
+    .info-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
+    .info-box .row { display: flex; align-items: center; margin-bottom: 10px; }
+    .info-box .label { color: #64748b; font-size: 13px; min-width: 130px; }
+    .info-box .val { color: #1e293b; font-weight: 600; font-size: 14px; }
+    .btn-wrap { text-align: center; margin: 28px 0; }
+    .btn { display: inline-block; padding: 14px 36px; background: #16a34a; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; }
+    .note { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+    .note p { color: #166534; font-size: 13px; margin: 0; }
+    .footer { background: #f8fafc; padding: 20px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+    .footer p { color: #94a3b8; font-size: 12px; margin: 0; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1>🏪 MG Boutique</h1>
+    <p>Système de gestion de boutique</p>
+  </div>
+  <div class="body">
+    <p class="greeting">Bonjour <span th:text="${nomComplet}">Utilisateur</span> 👋</p>
+    <p>Votre compte a été créé avec succès sur <strong th:text="${boutiqueName}">MG Boutique</strong>. Vous pouvez maintenant vous connecter à l'application.</p>
+
+    <div class="info-box">
+      <p style="margin:0 0 14px;font-weight:600;color:#1e40af;font-size:14px;">📋 Vos informations de connexion</p>
+      <div class="row">
+        <span class="label">Nom d'utilisateur :</span>
+        <span class="val" th:text="${username}">vendeur01</span>
+      </div>
+      <div class="row">
+        <span class="label">Mot de passe :</span>
+        <span class="val">Votre mot de passe défini par l'administrateur</span>
+      </div>
+      <div class="row" style="margin-bottom:0">
+        <span class="label">Boutique :</span>
+        <span class="val" th:text="${boutiqueName}">MG Boutique</span>
+      </div>
+    </div>
+
+    <div class="btn-wrap">
+      <a th:href="${lienConnexion}" class="btn">Se connecter maintenant</a>
+    </div>
+
+    <div class="note">
+      <p>🔒 Pour votre sécurité, nous vous recommandons de changer votre mot de passe après votre première connexion.</p>
+    </div>
+
+    <p>En cas de problème de connexion, contactez votre administrateur.</p>
+  </div>
+  <div class="footer">
+    <p>© MG Boutique — maigaamadou@mg-consulting.site</p>
+    <p style="margin-top:4px">Cet email a été envoyé automatiquement, ne pas répondre.</p>
+  </div>
+</div>
+</body>
+</html>

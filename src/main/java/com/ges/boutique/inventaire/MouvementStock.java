@@ -56,6 +56,12 @@ public class MouvementStock {
     @Column(name = "reference_id")
     private Long referenceId;
 
+    @Column(name = "niveau_id")
+    private Long niveauId;
+
+    @Column(name = "niveau_nom")
+    private String niveauNom;
+
     @PrePersist
     protected void onCreate() {
         if (dateMouvement == null) dateMouvement = LocalDateTime.now();

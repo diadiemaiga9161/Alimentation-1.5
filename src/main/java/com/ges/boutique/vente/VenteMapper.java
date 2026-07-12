@@ -96,6 +96,8 @@ public class VenteMapper {
         map.put("dateEcheance", vente.getDateEcheance());
         map.put("dateReglement", vente.getDateReglement());
         map.put("creditRegle", vente.getCreditRegle());
+        map.put("regleParNom", vente.getRegleParNom());
+        map.put("regleParId", vente.getReglePar() != null ? vente.getReglePar().getId() : null);
 
         // Champs d'annulation et retour
         map.put("annulee", vente.getAnnulee());

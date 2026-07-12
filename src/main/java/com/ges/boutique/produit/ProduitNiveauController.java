@@ -39,10 +39,25 @@ public class ProduitNiveauController {
         ProduitNiveau niveau = new ProduitNiveau();
         niveau.setProduit(produit);
         niveau.setNom(request.getNom());
-        niveau.setOrdre(request.getOrdre());
-        niveau.setFacteur(request.getFacteur());
-        niveau.setPrixAchat(request.getPrixAchat());
-        niveau.setPrixVente(request.getPrixVente());
+        niveau.setParentId(request.getParentId());
+        niveau.setFacteur(request.getFacteur() != null ? request.getFacteur() : 1);
+        niveau.setPrixAchat(request.getPrixAchat() != null ? request.getPrixAchat() : 0.0);
+        niveau.setPrixVente(request.getPrixVente() != null ? request.getPrixVente() : 0.0);
+        niveau.setStock(request.getStock() != null ? request.getStock() : 0);
+
+        // Calcul automatique de l'ordre depuis la hiérarchie parentId
+        if (request.getOrdre() != null) {
+            niveau.setOrdre(request.getOrdre());
+        } else if (request.getParentId() == null) {
+            niveau.setOrdre(1); // racine
+        } else {
+            List<ProduitNiveau> existants = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+            int ordreParent = existants.stream()
+                    .filter(n -> n.getId().equals(request.getParentId()))
+                    .findFirst().map(ProduitNiveau::getOrdre).orElse(0);
+            niveau.setOrdre(ordreParent + 1);
+        }
+
         ProduitNiveau saved = niveauRepository.save(niveau);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -59,6 +74,7 @@ public class ProduitNiveauController {
                 .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + id));
         if (request.getNom() != null) niveau.setNom(request.getNom());
         if (request.getOrdre() != null) niveau.setOrdre(request.getOrdre());
+        if (request.getParentId() != null) niveau.setParentId(request.getParentId());
         if (request.getFacteur() != null) niveau.setFacteur(request.getFacteur());
         if (request.getPrixAchat() != null) niveau.setPrixAchat(request.getPrixAchat());
         if (request.getPrixVente() != null) niveau.setPrixVente(request.getPrixVente());
@@ -94,10 +110,16 @@ public class ProduitNiveauController {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Stock invalide"));
         }
         niveau.setStock(newStock);
-        ProduitNiveau saved = niveauRepository.save(niveau);
+        niveauRepository.save(niveau);
+
+        // Synchroniser Produit.quantite avec le total des stocks niveaux
+        Produit produit = niveau.getProduit();
+        List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+        syncProduitQuantite(produit, niveaux);
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("niveau", saved);
+        response.put("niveau", niveau);
         return ResponseEntity.ok(response);
     }
 
@@ -111,48 +133,68 @@ public class ProduitNiveauController {
         Produit produit = target.getProduit();
         List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
 
-        int idx = -1;
-        for (int i = 0; i < niveaux.size(); i++) {
-            if (niveaux.get(i).getId().equals(id)) { idx = i; break; }
+        if (target.getParentId() == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", target.getNom() + " est déjà le niveau le plus grand. Ajoutez du stock directement."
+            ));
         }
 
-        if (idx == 0) {
-            // Parent direct = produit
-            if (produit.getQuantite() == null || produit.getQuantite() < 1) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Stock " + produit.getNom() + " insuffisant pour décomposer en " + target.getNom()
-                ));
-            }
-            produit.setQuantite(produit.getQuantite() - 1);
-            produitRepository.save(produit);
-        } else {
-            // Parent direct = niveau supérieur immédiat uniquement
-            ProduitNiveau parent = niveaux.get(idx - 1);
-            int parentStock = parent.getStock() != null ? parent.getStock() : 0;
-            if (parentStock < 1) {
-                String grandParentNom = (idx == 1) ? produit.getNom() : niveaux.get(idx - 2).getNom();
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Stock " + parent.getNom() + " épuisé. Décomposez d'abord " +
-                                grandParentNom + " → " + parent.getNom()
-                ));
-            }
-            parent.setStock(parentStock - 1);
-            niveauRepository.save(parent);
+        ProduitNiveau parent = niveaux.stream()
+                .filter(n -> n.getId().equals(target.getParentId()))
+                .findFirst().orElse(null);
+
+        if (parent == null) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Niveau parent introuvable."));
         }
+
+        int parentStock = parent.getStock() != null ? parent.getStock() : 0;
+        if (parentStock < 1) {
+            String gpNom = parent.getParentId() == null ? produit.getNom() :
+                    niveaux.stream().filter(n -> n.getId().equals(parent.getParentId()))
+                            .findFirst().map(ProduitNiveau::getNom).orElse("le niveau supérieur");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Plus de " + parent.getNom() + " disponible. Ouvrez d'abord un " + gpNom + " → " + parent.getNom()
+            ));
+        }
+
+        parent.setStock(parentStock - 1);
+        niveauRepository.save(parent);
 
         int newStock = (target.getStock() != null ? target.getStock() : 0) + target.getFacteur();
         target.setStock(newStock);
         niveauRepository.save(target);
 
         List<ProduitNiveau> updatedNiveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+        syncProduitQuantite(produit, updatedNiveaux);
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", "Décomposition effectuée : 1 " + (idx == 0 ? produit.getNom() : niveaux.get(idx - 1).getNom()) + " → " + target.getFacteur() + " " + target.getNom());
+        response.put("message", "Ouvert : 1 " + parent.getNom() + " → " + target.getFacteur() + " " + target.getNom());
         response.put("niveaux", updatedNiveaux);
         response.put("produitQuantite", produit.getQuantite());
         return ResponseEntity.ok(response);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private void syncProduitQuantite(Produit produit, List<ProduitNiveau> niveaux) {
+        long total = 0;
+        for (ProduitNiveau n : niveaux) {
+            long f = facteurVersBase(n, niveaux);
+            total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        produit.setQuantite((int) total);
+        produitRepository.save(produit);
+    }
+
+    private long facteurVersBase(ProduitNiveau niveau, List<ProduitNiveau> niveaux) {
+        ProduitNiveau child = niveaux.stream()
+                .filter(n -> niveau.getId().equals(n.getParentId()))
+                .findFirst().orElse(null);
+        if (child == null) return 1L; // feuille = unité de base
+        return child.getFacteur() * facteurVersBase(child, niveaux);
     }
 
     @DeleteMapping("/{produitId}/niveaux")

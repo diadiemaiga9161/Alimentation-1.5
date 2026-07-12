@@ -69,6 +69,12 @@ public class Boutique {
     @Column(name = "date_modification")
     private LocalDateTime dateModification;
 
+    public enum ModeOuverture { MANUEL, AUTO }
+
+    @Column(name = "mode_ouverture")
+    @Enumerated(EnumType.STRING)
+    private ModeOuverture modeOuverture = ModeOuverture.MANUEL;
+
     @PrePersist
     protected void onCreate() {
         dateCreation = LocalDateTime.now();

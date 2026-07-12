@@ -123,11 +123,11 @@ public class FournisseurAchatController {
 
     @GetMapping("/achats/{fournisseurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
-    @Operation(summary = "Historique des achats d'un fournisseur")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Historique des achats d'un fournisseur avec lignes produits")
     public ResponseEntity<Map<String, Object>> getHistoriqueAchats(@PathVariable Long fournisseurId) {
         List<AchatFournisseur> achats = fournisseurComptableService.getHistoriqueAchats(fournisseurId);
 
-        // Construire une réponse simplifiée sans références circulaires
         List<Map<String, Object>> achatsData = achats.stream()
                 .map(achat -> {
                     Map<String, Object> achatMap = new HashMap<>();
@@ -138,6 +138,24 @@ public class FournisseurAchatController {
                     achatMap.put("montantRestant", achat.getMontantRestant());
                     achatMap.put("statut", achat.getStatut().toString());
                     achatMap.put("commentaire", achat.getCommentaire());
+
+                    List<Map<String, Object>> lignesData = achat.getLignes().stream()
+                            .map(ligne -> {
+                                Map<String, Object> ligneMap = new HashMap<>();
+                                ligneMap.put("quantite", ligne.getQuantite());
+                                ligneMap.put("prixAchatUnitaire", ligne.getPrixAchatUnitaire());
+                                ligneMap.put("sousTotal", ligne.getSousTotal());
+                                if (ligne.getProduit() != null) {
+                                    Map<String, Object> p = new HashMap<>();
+                                    p.put("id", ligne.getProduit().getId());
+                                    p.put("nom", ligne.getProduit().getNom());
+                                    ligneMap.put("produit", p);
+                                }
+                                return ligneMap;
+                            })
+                            .collect(Collectors.toList());
+                    achatMap.put("lignes", lignesData);
+
                     return achatMap;
                 })
                 .collect(Collectors.toList());

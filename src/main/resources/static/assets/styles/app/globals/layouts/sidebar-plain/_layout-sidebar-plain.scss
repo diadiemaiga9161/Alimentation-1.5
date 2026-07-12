@@ -1,0 +1,159 @@
+// Layout Sidebar Plain
+.layout-sidebar-plain {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  transition: all 0.24s ease-in-out;
+
+  .side-content-wrap {
+    width: 240px;
+    min-width: 240px;
+    background: #fff;
+    // box-shadow: 0 4px 20px 1px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.08);
+    // border-right: 1px solid rgba(0, 0, 0, 0.1);
+    position: fixed;
+    height: 100vh;
+    z-index: 10;
+    overflow: auto;
+    left: 0;
+    transition: left 0.3s ease-in-out;
+    
+    &.sidebar-hidden {
+      left: -240px;
+      box-shadow: none;
+      border-right: none;
+    }
+  }
+
+  .main-content-wrap {
+    width: 100%;
+    float: right;
+    margin-left: 240px;
+    margin-top: 0;
+    transition: margin-left 0.3s ease-in-out;
+
+    .main-content {
+      padding: 1.5rem;
+      min-height: calc(100vh - 150px);
+    }
+  }
+  
+  // Handle sidebar toggle
+  &:not(.sidenav-open) {
+    .main-content-wrap {
+      width: 100%;
+      margin-left: 0;
+    }
+  }
+
+  // Sidebar backdrop for mobile
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 110;
+    background-color: rgba(0, 0, 0, 0.5);
+    transition: opacity 0.3s ease;
+  }
+  
+  // Mobile view
+  @media (max-width: 767px) {
+    .sidebar-backdrop {
+      display: none;
+    }
+    
+    &.sidenav-open {
+      .sidebar-backdrop {
+        display: block;
+      }
+    }
+    
+    .side-content-wrap {
+      position: fixed;
+      left: -240px; // Hide sidebar by default on mobile
+      top: 0;
+      bottom: 0;
+      z-index: 120;
+      box-shadow: none;
+    }
+    
+    .main-content-wrap {
+      width: 100%;
+      margin-left: 0; // No margin on mobile
+    }
+  }
+  
+  // When sidenav is open on mobile
+  &.sidenav-open {
+    @media (max-width: 767px) {
+      .side-content-wrap {
+        left: 0; // Show when toggled
+      }
+    }
+  }
+
+  // When sidenav is open on mobile
+  &.sidenav-open {
+    @media (max-width: 767px) {
+      .side-content-wrap {
+        left: 0;
+        box-shadow: 0 4px 20px 1px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.08);
+      }
+    }
+  }
+}
+
+// Right-to-left support
+[dir="rtl"] {
+  .layout-sidebar-plain {
+    .side-content-wrap {
+      left: auto;
+      right: 0;
+      transition: right 0.3s ease-in-out;
+      
+      &.sidebar-hidden {
+        left: auto;
+        right: -240px;
+      }
+    }
+
+    .main-content-wrap {
+      float: left;
+      margin-left: 0;
+      margin-right: 240px;
+      transition: margin-right 0.3s ease-in-out;
+    }
+    
+    // Handle sidebar toggle
+    &:not(.sidenav-open) {
+      .main-content-wrap {
+        margin-right: 0;
+      }
+    }
+
+    // Mobile view
+    @media (max-width: 767px) {
+      .side-content-wrap {
+        left: auto;
+        right: -240px; // Hide sidebar by default on mobile
+      }
+      
+      .main-content-wrap {
+        margin-right: 0; // No margin on mobile
+      }
+    }
+    
+    // When sidenav is open on mobile
+    &.sidenav-open {
+      @media (max-width: 767px) {
+        .side-content-wrap {
+          left: auto;
+          right: 0; // Show when toggled
+        }
+      }
+    }
+  }
+}

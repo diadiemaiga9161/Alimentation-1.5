@@ -120,6 +120,14 @@ public class Vente {
     @Column(name = "utilisateur_annulation")
     private Long utilisateurAnnulation;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "regle_par_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "ventes", "boutique"})
+    private Utilisateur reglePar;
+
+    @Column(name = "regle_par_nom")
+    private String regleParNom;
+
     @Column(name = "client_request_id", unique = true)
     private String clientRequestId;
 

@@ -76,4 +76,45 @@ public class CommandeController {
         resp.put("message", "Commande supprimée");
         return ResponseEntity.ok(resp);
     }
+
+    @PostMapping("/{id}/annuler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> annuler(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body) {
+        Long userId = body != null && body.get("utilisateurId") != null ? Long.valueOf(body.get("utilisateurId").toString()) : null;
+        Commande commande = commandeService.annuler(id, userId);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("message", "Commande annulée" + (commande.getVenteId() != null ? " — vente et stock restaurés" : ""));
+        resp.put("commande", commande);
+        return ResponseEntity.ok(resp);
+    }
+
+    @PatchMapping("/{id}/payer-credit")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> payerCredit(@PathVariable Long id, @RequestBody Map<String, Double> body) {
+        Double montant = body.get("montant");
+        if (montant == null || montant <= 0) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Montant invalide"));
+        }
+        Commande commande = commandeService.payerCredit(id, montant);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("message", "Paiement enregistré");
+        resp.put("commande", commande);
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/payer-credits-groupes")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> payerCreditsGroupes(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Long> ids = ((List<Integer>) body.get("ids")).stream().map(Long::valueOf).toList();
+        Double montantTotal = ((Number) body.get("montantTotal")).doubleValue();
+        List<Commande> commandes = commandeService.payerCreditsGroupes(ids, montantTotal);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("message", "Règlement groupé enregistré");
+        resp.put("commandes", commandes);
+        return ResponseEntity.ok(resp);
+    }
 }

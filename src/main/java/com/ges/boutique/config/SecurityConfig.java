@@ -74,6 +74,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/caisse/factures/*/pdf/view").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/caisse/factures/*/qrcode").permitAll()
 
+                        // Facture publique — scan QR code depuis téléphone client (sans auth)
+                        .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
+
                         // Relevé client PDF + QR code — public (client scanne sans être connecté)
                         .requestMatchers(HttpMethod.GET, "/api/clients/*/releve-pdf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/clients/*/qrcode").permitAll()

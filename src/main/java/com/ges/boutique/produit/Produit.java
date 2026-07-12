@@ -93,6 +93,9 @@ public class Produit {
     @JsonIgnore // Ignorer complètement la collection lors de la sérialisation JSON
     private List<LigneVente> lignesVente = new ArrayList<>();
 
+    @OneToMany(mappedBy = "produit", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProduitNiveau> niveaux = new ArrayList<>();
+
     @PrePersist
     protected void onCreate() {
         dateAjout = LocalDateTime.now();

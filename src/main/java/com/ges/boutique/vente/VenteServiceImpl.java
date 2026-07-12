@@ -1,6 +1,7 @@
 package com.ges.boutique.vente;
 
 import com.ges.boutique.avance.AvanceClientService;
+import com.ges.boutique.vente.dto.VenteAnnuleeDTO;
 import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
@@ -755,6 +756,64 @@ public class VenteServiceImpl implements VenteService {
                 .limit(10)
                 .map(e -> Map.<String, Object>of("produit", e.getKey(), "chiffreAffaire", e.getValue()))
                 .collect(Collectors.toList());
+    }
+
+    // ==================== VENTES ANNULÉES ET CRÉDITS ACTIFS ====================
+
+    /**
+     * Retourne les ventes annulées enrichies avec le nom du vendeur et de l'annuleur.
+     * Un Map<Long, String> évite les requêtes en double pour le même utilisateur.
+     * Le paramètre boutiqueId est ignoré (architecture une-instance-par-boutique).
+     */
+    @Override
+    public List<VenteAnnuleeDTO> obtenirVentesAnnulees(Long boutiqueId) {
+        List<Vente> ventes = venteRepository.findAllVentesAnnulees();
+
+        // Cache local ID utilisateur → nomComplet pour éviter les doublons de requêtes
+        Map<Long, String> nomParUtilisateurId = new HashMap<>();
+
+        return ventes.stream().map(v -> {
+            VenteAnnuleeDTO dto = new VenteAnnuleeDTO();
+            dto.setId(v.getId());
+            dto.setNumeroVente(v.getNumeroVente());
+            dto.setDateVente(v.getDateVente());
+            dto.setDateAnnulation(v.getDateAnnulation());
+            dto.setMontantTotal(v.getMontantTotal());
+            dto.setMotifAnnulation(v.getMotifAnnulation());
+
+            // Nom du client : champ direct sur la vente
+            dto.setClientNom(v.getClientNom());
+
+            // Nom du vendeur : relation ManyToOne EAGER, disponible sans requête supplémentaire
+            if (v.getVendeur() != null) {
+                String vendeurNom = v.getVendeur().getNomComplet() != null
+                        ? v.getVendeur().getNomComplet()
+                        : v.getVendeur().getUsername();
+                dto.setVendeurNom(vendeurNom);
+            }
+
+            // Nom de l'annuleur : Long ID stocké, résolution via cache
+            Long annuleurId = v.getUtilisateurAnnulation();
+            if (annuleurId != null) {
+                String annuleurNom = nomParUtilisateurId.computeIfAbsent(annuleurId, id ->
+                        utilisateurRepository.findById(id)
+                                .map(u -> u.getNomComplet() != null ? u.getNomComplet() : u.getUsername())
+                                .orElse("Utilisateur inconnu")
+                );
+                dto.setAnnuleurNom(annuleurNom);
+            }
+
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * Retourne les crédits actifs (non annulés) — endpoint optimisé.
+     * Le paramètre boutiqueId est ignoré (architecture une-instance-par-boutique).
+     */
+    @Override
+    public List<Vente> obtenirCreditsActifs(Long boutiqueId) {
+        return venteRepository.findCreditsActifs();
     }
 
     // ==================== MÉTHODES PRIVÉES ====================

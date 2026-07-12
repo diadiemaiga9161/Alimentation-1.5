@@ -10,4 +10,7 @@ public interface CommandeService {
     Commande findById(Long id);
     List<Commande> findAll();
     List<Commande> findByStatut(StatutCommande statut);
+    Commande payerCredit(Long id, Double montant);
+    List<Commande> payerCreditsGroupes(List<Long> ids, Double montantTotal);
+    Commande annuler(Long id, Long utilisateurId);
 }

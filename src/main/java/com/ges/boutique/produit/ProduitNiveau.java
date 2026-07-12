@@ -39,4 +39,7 @@ public class ProduitNiveau {
 
     @Column(nullable = false)
     private Integer stock = 0; // stock propre de ce niveau (ex: nb de cartouches en stock)
+
+    @Column(name = "parent_id")
+    private Long parentId; // null = niveau racine (le plus grand). Sinon = id du niveau parent direct.
 }

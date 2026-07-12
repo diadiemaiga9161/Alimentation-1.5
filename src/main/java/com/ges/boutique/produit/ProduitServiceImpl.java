@@ -508,6 +508,25 @@ public class ProduitServiceImpl implements ProduitService {
         dto.setTauxMarge(produit.getTauxMarge());
         dto.setJoursAvantPeremption(produit.getJoursAvantPeremption());
 
+        // Niveaux de conditionnement
+        if (produit.getNiveaux() != null && !produit.getNiveaux().isEmpty()) {
+            List<ProduitNiveauDto> niveauxDto = produit.getNiveaux().stream()
+                .map(n -> {
+                    ProduitNiveauDto nd = new ProduitNiveauDto();
+                    nd.setId(n.getId());
+                    nd.setNom(n.getNom());
+                    nd.setOrdre(n.getOrdre());
+                    nd.setFacteur(n.getFacteur());
+                    nd.setPrixVente(n.getPrixVente());
+                    nd.setPrixAchat(n.getPrixAchat());
+                    nd.setStock(n.getStock());
+                    nd.setParentId(n.getParentId());
+                    return nd;
+                })
+                .collect(Collectors.toList());
+            dto.setNiveaux(niveauxDto);
+        }
+
         return dto;
     }
 

@@ -21,5 +21,6 @@ public enum TypeOperationCaisse {
     PAIEMENT_EMPLOYE,             // Paiement salaire employé (hors calcul sorties normales)
     ANNULATION_PAIEMENT_EMPLOYE,
     REMBOURSEMENT_RETOUR,
+    REMBOURSEMENT_COMMANDE,
     DEPENSE
 }

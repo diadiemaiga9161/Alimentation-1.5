@@ -1,0 +1,99 @@
+@use "../../themes/themes" as theme;
+
+// BOOTSTRAP ALERT
+.alert {
+    background: theme.$background;
+    border-radius: 10px;
+    .close:focus {
+        outline: 0;
+    }
+}
+.alert-card {
+    border: none;
+    box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$gray-400;
+    &.alert-success {
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$success;
+    }
+    &.alert-warning {
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$warning;
+    }
+    &.alert-info {
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$info;
+    }
+    &.alert-danger {
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$danger;
+    }
+    &.alert-dark {
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$gray-600;
+    }
+}
+
+// NGX TOASTR
+.toast-container {
+    .ngx-toastr {
+      color: theme.$foreground;
+    }
+    .toast {
+        border-radius: 10px;
+        color: theme.$foreground;
+        opacity: 1 !important;
+    }
+    .toast-close-button {
+        position: absolute;
+        color: theme.$gray-400;
+        top: -1px;
+        right: 8px;
+    }
+    .toast-progress {
+        height: 2px;
+        opacity: 1;
+    }
+    
+    .toast-success {
+        background-color: theme.$background;
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$success;
+        background-image: url('../../../../images/checkmark.svg');
+        .toast-progress {
+            background: theme.$success;
+        }
+        &:hover {
+            box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$success;
+        }
+    }
+    .toast-warning {
+        background-color: theme.$background;
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$warning;
+        background-image: url('../../../../images/danger.svg');
+        .toast-progress {
+            background: theme.$warning;
+        }
+        &:hover {
+            box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$warning;
+        }
+    }
+    .toast-info {
+        background-color: theme.$background;
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$info;
+        background-image: url('../../../../images/info.svg');
+        .toast-progress {
+            background: theme.$info;
+        }
+        &:hover {
+            box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$info;
+        }
+    }
+    .toast-error {
+        background-color: theme.$background;
+        box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$danger;
+        background-image: url('../../../../images/close.svg');
+        .toast-progress {
+            background: theme.$danger;
+        }
+        &:hover {
+            box-shadow: 0 4px 15px 0 rgba(0,0,0,.1), 0 1px 2px 0 rgba(0,0,0,.1), inset 0 2px 0 0 theme.$danger;
+        }
+    }
+}
+.toast-top-right {
+    right: 30px;
+}

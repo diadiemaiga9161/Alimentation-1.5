@@ -1,0 +1,341 @@
+{
+  "LANG": {
+    "SELECT": "اللغة",
+    "FR": "Français",
+    "EN": "English",
+    "AR": "العربية",
+    "ES": "Español",
+    "PT": "Português",
+    "DE": "Deutsch",
+    "ZH": "中文",
+    "HA": "Hausa",
+    "SW": "Kiswahili",
+    "WO": "Wolof"
+  },
+  "LOGIN": {
+    "TITLE": "مرحباً !",
+    "SUBTITLE": "سجّل الدخول للمتابعة",
+    "FIELD_LABEL": "البريد الإلكتروني أو الهاتف أو اسم المستخدم",
+    "FIELD_PLACEHOLDER": "أدخل بريدك أو هاتفك أو اسم المستخدم",
+    "PASSWORD_LABEL": "كلمة المرور",
+    "PASSWORD_PLACEHOLDER": "••••••••",
+    "SUBMIT": "تسجيل الدخول",
+    "LOADING": "جارٍ الاتصال...",
+    "FORGOT": "نسيت كلمة المرور ؟",
+    "WELCOME": "مرحباً {{name}} !",
+    "ERROR_REQUIRED": "اسم المستخدم وكلمة المرور مطلوبان",
+    "ERROR_FAILED": "فشل تسجيل الدخول"
+  },
+  "COMMON": {
+    "SAVE": "حفظ",
+    "CANCEL": "إلغاء",
+    "DELETE": "حذف",
+    "EDIT": "تعديل",
+    "ADD": "إضافة",
+    "SEARCH": "بحث",
+    "LOADING": "جارٍ التحميل...",
+    "CLOSE": "إغلاق",
+    "CONFIRM": "تأكيد",
+    "YES": "نعم",
+    "NO": "لا",
+    "ERROR": "خطأ",
+    "SUCCESS": "نجاح",
+    "BACK": "رجوع",
+    "FILTER": "تصفية",
+    "TOTAL": "الإجمالي",
+    "DATE": "التاريخ",
+    "AMOUNT": "المبلغ",
+    "ACTIONS": "إجراءات",
+    "STATUS": "الحالة",
+    "DETAILS": "تفاصيل",
+    "PRINT": "طباعة",
+    "DOWNLOAD": "تنزيل",
+    "REFRESH": "تحديث",
+    "SEND": "إرسال",
+    "ALL": "الكل"
+  },
+  "NAV": {
+    "PRODUCTS": "المنتجات", "SALES": "المبيعات", "CLIENTS": "العملاء",
+    "CAISSE": "الصندوق", "INVENTORY": "الجرد", "REPORTS": "التقارير",
+    "PROFILE": "الملف الشخصي", "MORE": "المزيد", "BENEFITS": "الأرباح",
+    "TRANSFERS": "التحويلات", "INVOICES": "الفواتير", "SELLERS": "البائعون",
+    "DEBTS": "الديون", "BANK": "البنك", "SHOP": "المتجر", "EMPLOYEES": "الموظفون",
+    "EMPLOYEE_PAY": "رواتب الموظفين", "SAFE": "الودائع",
+    "SUPPLIER_OBJ": "أهداف الموردين", "SUPPLIER_BONUS": "مكافآت الموردين",
+    "EXPENSES": "المصروفات", "NET_RESULT": "الصافي", "SUPPLIERS": "الموردون",
+    "MOBILE_MONEY": "موبايل موني", "INVOICE_DESIGN": "تصميم الفواتير",
+    "REPORT": "تقرير", "PROMO": "العروض", "CREDIT_PAYMENT": "تسوية الائتمان",
+    "ORDERS": "الطلبات", "NOTIFICATIONS": "الإشعارات", "PARTNERS": "الشركاء"
+  },
+  "PROFILE": {
+    "TITLE": "ملفي الشخصي",
+    "FULL_NAME": "الاسم الكامل",
+    "EMAIL": "البريد الإلكتروني",
+    "PHONE": "الهاتف",
+    "COUNTRY_CODE": "رمز الدولة",
+    "PASSWORD": "كلمة مرور جديدة",
+    "SAVE": "حفظ التغييرات",
+    "LANGUAGE": "لغة التطبيق",
+    "ROLE": "الدور",
+    "BOUTIQUE": "المتجر",
+    "LOGOUT": "تسجيل الخروج",
+    "LOGOUT_CONFIRM": "هل تريد تسجيل الخروج ؟",
+    "SAVED": "تم تحديث الملف الشخصي"
+  },
+  "PRODUCTS": {
+    "TITLE": "المنتجات",
+    "ADD": "منتج جديد",
+    "NAME": "اسم المنتج",
+    "PRICE_SELL": "سعر البيع",
+    "PRICE_BUY": "سعر الشراء",
+    "STOCK": "المخزون",
+    "CATEGORY": "الفئة",
+    "SUPPLIER": "المورد",
+    "BARCODE": "الباركود",
+    "ALERT_THRESHOLD": "حد التنبيه",
+    "LOW_STOCK": "مخزون منخفض",
+    "OUT_OF_STOCK": "نفد المخزون",
+    "SEARCH": "ابحث عن منتج",
+    "SAVED": "تم حفظ المنتج",
+    "DELETED": "تم حذف المنتج",
+    "CONFIRM_DELETE": "حذف هذا المنتج ؟"
+  },
+  "SALES": {
+    "TITLE": "المبيعات",
+    "NEW": "بيع جديد",
+    "TODAY": "اليوم",
+    "WEEK": "هذا الأسبوع",
+    "MONTH": "هذا الشهر",
+    "ALL": "الكل",
+    "CASH": "نقداً",
+    "CREDIT": "دين",
+    "SETTLED": "مسدَّد",
+    "CANCELLED": "ملغى",
+    "RETURN": "إرجاع",
+    "MODIFY": "تعديل",
+    "INVOICE": "فاتورة PDF",
+    "QR_CODE": "رمز QR",
+    "TOTAL": "الإجمالي",
+    "AMOUNT_PAID": "المبلغ المدفوع",
+    "REMAINING": "المتبقي",
+    "DISCOUNT": "خصم",
+    "PAYMENT_MODE": "طريقة الدفع",
+    "CASH_PAYMENT": "نقداً",
+    "MOBILE_MONEY": "موبايل موني",
+    "CARD": "بطاقة",
+    "CHEQUE": "شيك",
+    "TRANSFER": "تحويل بنكي"
+  },
+  "CLIENTS": {
+    "TITLE": "العملاء",
+    "ADD": "عميل جديد",
+    "NAME": "اللقب",
+    "FIRSTNAME": "الاسم",
+    "PHONE": "الهاتف",
+    "EMAIL": "البريد الإلكتروني",
+    "ADDRESS": "العنوان",
+    "QR_CODE": "رمز QR للعميل",
+    "HISTORY": "السجل",
+    "CREDITS": "الديون",
+    "ADVANCES": "السلف",
+    "RELEVE": "كشف PDF",
+    "SEARCH": "ابحث عن عميل",
+    "SAVED": "تم حفظ العميل",
+    "DELETED": "تم حذف العميل",
+    "PARTNER": "شريك"
+  },
+  "PARTENAIRES": {
+    "TITLE": "الشركاء",
+    "SEARCH": "ابحث عن شريك"
+  },
+  "CAISSE": {
+    "TITLE": "الصندوق",
+    "BALANCE": "الرصيد الحالي",
+    "INCOME": "دخل",
+    "EXPENSE": "مصروف",
+    "TRANSFER": "تحويل بنكي",
+    "OPERATIONS": "العمليات",
+    "CREDITS": "الديون",
+    "STATS": "الإحصائيات",
+    "SETTLE_CREDIT": "تسديد دين",
+    "AMOUNT": "المبلغ",
+    "REASON": "السبب",
+    "OVERDUE": "متأخر"
+  },
+  "INVENTORY": {
+    "TITLE": "الجرد",
+    "MOVEMENT": "حركة المخزون",
+    "LOW_STOCK": "مخزون منخفض",
+    "HISTORY": "السجل",
+    "IN": "إدخال",
+    "OUT": "إخراج",
+    "CORRECTION": "تصحيح",
+    "LOSS": "خسارة",
+    "PRODUCT": "المنتج",
+    "QUANTITY": "الكمية",
+    "REASON": "السبب",
+    "SAVED": "تم تسجيل الحركة"
+  },
+  "REPORTS": {
+    "TITLE": "التقارير",
+    "DAILY": "يومي",
+    "WEEKLY": "أسبوعي",
+    "MONTHLY": "شهري",
+    "CUSTOM": "مخصص",
+    "REVENUE": "رقم الأعمال",
+    "PROFIT": "الربح",
+    "EXPENSES": "المصاريف",
+    "NET": "الصافي",
+    "SALES_COUNT": "عدد المبيعات",
+    "START_DATE": "تاريخ البداية",
+    "END_DATE": "تاريخ النهاية"
+  },
+  "NOTIFICATIONS": {
+    "LOW_STOCK": "مخزون منخفض",
+    "OUT_OF_STOCK": "نفد المخزون",
+    "CREDIT_OVERDUE": "دين متأخر"
+  },
+  "BOUTIQUE": {
+    "SELECT_TITLE": "اختر متجراً",
+    "SELECT_SUB": "اختر متجرك للمتابعة"
+  },
+  "FORGOT_PASSWORD": {
+    "TITLE": "نسيت كلمة المرور",
+    "EMAIL_LABEL": "البريد الإلكتروني",
+    "SUBMIT": "إرسال رابط الاسترداد",
+    "BACK": "العودة لتسجيل الدخول"
+  },
+  "EXPENSES": {
+    "TITLE": "المصروفات", "SUBTITLE": "خصم تلقائي من الصندوق",
+    "NEW": "مصروف جديد", "EDIT": "تعديل المصروف",
+    "NAME": "اسم المصروف", "REASON": "السبب / الوصف", "TYPE": "نوع المصروف",
+    "TOTAL": "إجمالي المصروفات", "PERIOD_TOTAL": "إجمالي الفترة",
+    "EMPTY": "لا توجد مصروفات", "RESET": "إعادة تعيين",
+    "ADJUST_INFO": "سيتم تعديل الصندوق تلقائياً",
+    "DEDUCT_INFO": "سيتم خصم المبلغ تلقائياً من الصندوق",
+    "PDF_TITLE": "تقرير المصروفات", "PDF_FOOTER": "وثيقة سرية — Ges Boutique",
+    "TYPE_FILTER": "تصفية حسب النوع", "MONTH_FILTER": "تصفية حسب الشهر",
+    "ALL_TYPES": "جميع الأنواع", "SUMMARY_BY_TYPE": "ملخص حسب النوع",
+    "PDF_BTN": "تحميل PDF",
+    "MONTH": "الشهر", "COUNT": "عدد المصروفات", "TYPES_COUNT": "الأنواع", "AVERAGE": "المتوسط", "BY_TYPE": "التوزيع حسب النوع"
+  },
+  "SELLERS": {
+    "TITLE": "إدارة المستخدمين", "SUBTITLE": "المشرفون والبائعون والصلاحيات",
+    "TOTAL_USERS": "إجمالي المستخدمين", "ADMINS": "المشرفون",
+    "SELLERS": "البائعون", "ACTIVE": "نشط", "NEW": "بائع جديد",
+    "EMPTY": "لا يوجد مستخدمون", "ROLE": "الدور",
+    "COUNTRY_CODE": "رمز الدولة", "ACTIVATE": "تفعيل", "DEACTIVATE": "تعطيل"
+  },
+  "DEBTS": {
+    "TITLE": "الديون القديمة", "SUBTITLE": "إدارة الديون السابقة",
+    "NEW": "دين جديد", "CREDITOR": "الدائن", "PAID": "مسدَّد",
+    "REMAINING": "المتبقي", "PAID_STATUS": "مسدَّد", "PARTIAL": "جزئي",
+    "PENDING": "معلق", "SETTLE": "تسديد", "EMPTY": "لا توجد ديون"
+  },
+  "ACCOUNTS": {
+    "TITLE": "الحسابات البنكية", "SUBTITLE": "إدارة خزينتك البنكية",
+    "NEW": "حساب جديد", "NAME": "اسم الحساب", "BALANCE": "الرصيد",
+    "DEPOSIT": "إيداع", "WITHDRAW": "سحب", "HISTORY": "السجل",
+    "EMPTY": "لا توجد حسابات"
+  },
+  "EMPLOYEES": {
+    "TITLE": "الموظفون", "SUBTITLE": "إدارة الموظفين",
+    "NEW": "موظف جديد", "NAME": "الاسم", "POST": "المنصب",
+    "SALARY": "الراتب", "START_DATE": "تاريخ التوظيف",
+    "ACTIVE": "نشط", "INACTIVE": "غير نشط", "EMPTY": "لا يوجد موظفون"
+  },
+  "EMPLOYEE_PAY": {
+    "TITLE": "رواتب الموظفين", "SUBTITLE": "الرواتب والسلف",
+    "PAY": "دفع", "ADVANCE": "سلفة", "SALARY": "راتب",
+    "MONTH": "الشهر", "PAID": "مسدَّد", "PENDING": "معلق",
+    "HISTORY": "سجل المدفوعات", "EMPTY": "لا توجد مدفوعات"
+  },
+  "SAFE": {
+    "TITLE": "الودائع", "SUBTITLE": "إدارة ودائع البضائع",
+    "NEW": "وديعة جديدة", "DEPOSITOR": "المودِع", "PRODUCT": "المنتج",
+    "QUANTITY": "الكمية", "ACTIVE": "نشط", "RETURNED": "مُعاد",
+    "EMPTY": "لا توجد ودائع"
+  },
+  "SUPPLIER_OBJ": {
+    "TITLE": "أهداف الموردين", "SUBTITLE": "متابعة أهداف المشتريات",
+    "NEW": "هدف جديد", "SUPPLIER": "المورد", "TARGET": "الهدف",
+    "ACHIEVED": "المحقق", "PROGRESS": "التقدم", "EMPTY": "لا توجد أهداف"
+  },
+  "SUPPLIERS": {
+    "TITLE": "الموردون", "SUBTITLE": "إدارة مورديك",
+    "NEW": "مورد جديد", "NAME": "الاسم", "PHONE": "الهاتف",
+    "ADDRESS": "العنوان", "EMPTY": "لا يوجد موردون"
+  },
+  "BENEFITS": {
+    "TITLE": "الأرباح", "SUBTITLE": "تحليل الأرباح",
+    "GROSS": "الربح الإجمالي", "NET": "الربح الصافي",
+    "EXPENSES": "المصروفات", "DAILY": "يومي", "MONTHLY": "شهري", "TOTAL": "الإجمالي"
+  },
+  "TRANSFERS": {
+    "TITLE": "التحويلات", "SUBTITLE": "إدارة تحويلات الأموال",
+    "NEW": "تحويل جديد", "FROM": "من", "TO": "إلى",
+    "TYPE": "النوع", "EMPTY": "لا توجد تحويلات"
+  },
+  "SUPPLIER_BONUS": {
+    "TITLE": "مكافآت الموردين", "SUBTITLE": "مزايا وخصومات الموردين",
+    "NEW": "مكافأة جديدة", "SUPPLIER": "المورد",
+    "TYPE": "النوع", "VALUE": "القيمة", "EMPTY": "لا توجد مكافآت"
+  },
+  "NET_RESULT": {
+    "TITLE": "الصافي", "SUBTITLE": "التحليل المالي الكامل",
+    "REVENUE": "رقم الأعمال", "COST": "تكلفة البضاعة",
+    "GROSS": "الهامش الإجمالي", "EXPENSES": "المصروفات", "NET": "الصافي"
+  },
+  "MOBILE_MONEY": {
+    "TITLE": "موبايل موني", "SUBTITLE": "Orange ، Moov ، Wave",
+    "OPERATIONS": "العمليات", "SUMMARY": "الملخص",
+    "DOWNLOAD": "تنزيل", "ALL": "الكل", "EXPORT_CSV": "تصدير CSV"
+  },
+  "INVOICE_DESIGN": {
+    "TITLE": "تصميم الفواتير", "SUBTITLE": "اختر نموذج فواتيرك",
+    "CLASSIC": "كلاسيكي", "CLASSIC_DESC": "رأس أزرق، أسلوب احترافي",
+    "MODERN": "عصري", "MODERN_DESC": "تصميم داكن وأنيق",
+    "MINIMAL": "بسيط", "MINIMAL_DESC": "نظيف وبسيط",
+    "SELECTED": "محدد", "SELECT": "اختر"
+  },
+  "INVOICES": {
+    "TITLE": "الفواتير", "SUBTITLE": "سجل فواتيرك",
+    "NUMBER": "رقم الفاتورة", "CLIENT": "العميل", "PAYMENT": "الدفع",
+    "DESIGN": "التصميم", "PRINT": "طباعة", "DOWNLOAD_PDF": "تنزيل PDF",
+    "EMPTY": "لا توجد فواتير", "DETAIL": "تفاصيل الفاتورة"
+  },
+  "PROMO": {
+    "TITLE": "العروض", "SUBTITLE": "أدِر عروضك وأخطر عملاءك عبر واتساب",
+    "NEW": "عرض جديد", "NAME": "العنوان", "DESC": "الوصف",
+    "START": "تاريخ البداية", "END": "تاريخ النهاية", "TYPE": "نوع الخصم",
+    "PERCENT": "نسبة مئوية (%)", "FIXED": "مبلغ ثابت (FCFA)", "VALUE": "القيمة",
+    "ACTIVE": "نشط", "WHATSAPP": "إرسال واتساب",
+    "STATUS_ACTIVE": "نشط", "STATUS_UPCOMING": "قادم",
+    "STATUS_EXPIRED": "منتهي", "STATUS_INACTIVE": "غير نشط", "EMPTY": "لا توجد عروض",
+    "PREVIEW": "معاينة الرسالة:", "TOTAL_CLIENTS": "إجمالي العملاء",
+    "WITH_PHONE": "برقم هاتف", "WITHOUT_PHONE": "بدون رقم", "SEND": "إرسال"
+  },
+  "BOUTIQUE_SETTINGS": {
+    "TITLE": "إعدادات المتجر", "SUBTITLE": "المعلومات والإعدادات",
+    "NAME": "اسم المتجر", "ADDRESS": "العنوان", "PHONE": "الهاتف", "LOGO": "الشعار",
+    "CUSTOMIZATION": "تخصيص عام",
+    "DARK_MODE": "الوضع المظلم", "DARK_MODE_DESC": "تفعيل المظهر الداكن للتطبيق",
+    "PACKAGING": "تعبئة متعددة المستويات",
+    "PACKAGING_DESC": "البيع حسب المستوى (كرتون → كيس → وحدة) مع مخزون تسلسلي تلقائي.",
+    "ENABLED": "مفعّل", "DISABLED": "معطّل",
+    "MAIN_COLOR": "اللون الرئيسي", "MAIN_COLOR_DESC": "اختر اللون الرئيسي للتطبيق",
+    "PREVIEW": "معاينة:",
+    "PACKAGING_LEVELS": "مستويات التعبئة لكل منتج",
+    "PACKAGING_LEVELS_DESC": "حدد كيفية تعبئة كل منتج (مثال: كرتون → كيس → وحدة).",
+    "SELECT_PRODUCT": "المنتج", "CHOOSE_PRODUCT": "اختر منتجاً",
+    "NO_LEVELS": "لا يوجد مستوى لهذا المنتج. انقر على «إضافة مستوى».",
+    "ADD_LEVEL": "إضافة مستوى", "EDIT_LEVEL": "تعديل المستوى",
+    "LEVEL_NAME": "اسم التعبئة (مثال: كرتون، كيس، وحدة)",
+    "LEVEL_PARENT": "يوجد داخل:",
+    "LEVEL_PARENT_HINT": "اختر \"الأكبر\" إذا لم تكن هذه التعبئة داخل شيء آخر.",
+    "NO_PARENT": "الأكبر (لا وعاء)",
+    "PURCHASE_PRICE": "سعر الشراء (FCFA)", "SELL_PRICE": "سعر البيع (FCFA)",
+    "CURRENT_STOCK": "المخزون الحالي",
+    "DECOMPOSE": "فتح وحدة واحدة من الوالد"
+  }
+}

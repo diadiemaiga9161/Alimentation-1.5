@@ -9,5 +9,5 @@ import java.util.List;
 public interface CommandeRepository extends JpaRepository<Commande, Long> {
     List<Commande> findAllByOrderByDateCommandeDesc();
     List<Commande> findByStatutOrderByDateCommandeDesc(StatutCommande statut);
-    List<Commande> findByClientIdOrderByDateCommandeDesc(Long clientId);
+    List<Commande> findByClient_IdOrderByDateCommandeDesc(Long clientId);
 }

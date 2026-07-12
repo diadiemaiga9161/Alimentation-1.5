@@ -31,6 +31,9 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.creditRegle IS NULL OR v.creditRegle = false) AND (v.annulee IS NULL OR v.annulee = false) AND v.dateEcheance < CURRENT_DATE ORDER BY v.dateEcheance ASC")
     List<Vente> findCreditsEnRetard();
 
+    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND v.creditRegle = true AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateReglement DESC")
+    List<Vente> findCreditsRegles();
+
     @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND v.clientNom LIKE %:clientNom% AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findCreditsByClientNom(@Param("clientNom") String clientNom);
 
@@ -39,6 +42,13 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
 
     @Query("SELECT v FROM Vente v WHERE v.annulee = true ORDER BY v.dateAnnulation DESC")
     List<Vente> findAllVentesAnnulees();
+
+    /**
+     * Crédits actifs (non annulés) triés par date de vente décroissante.
+     * Endpoint dédié pour éviter le chargement de toutes les ventes côté client.
+     */
+    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
+    List<Vente> findCreditsActifs();
 
     @Query("SELECT v FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findAllNonAnnulees();

@@ -115,7 +115,7 @@ public class CommandeServiceImpl implements CommandeService {
         }
         venteRequest.setLignes(lignesVente);
 
-        // Créer la vente → décrémente le stock + caisse
+        // Créer la vente → décrémente le stock + caisse + enregistre mouvement SORTIE avec referenceType=VENTE
         Vente vente = venteService.creerVente(venteRequest);
 
         // Marquer la commande comme validée
@@ -150,6 +150,52 @@ public class CommandeServiceImpl implements CommandeService {
     @Override
     public List<Commande> findByStatut(StatutCommande statut) {
         return commandeRepository.findByStatutOrderByDateCommandeDesc(statut);
+    }
+
+    @Override
+    @Transactional
+    public Commande payerCredit(Long id, Double montant) {
+        Commande commande = findById(id);
+        if (!Boolean.TRUE.equals(commande.getEstCredit())) {
+            throw new IllegalStateException("Cette commande n'est pas un crédit");
+        }
+        double nouveauVerse = (commande.getMontantVerse() != null ? commande.getMontantVerse() : 0.0) + montant;
+        commande.setMontantVerse(Math.min(nouveauVerse, commande.getMontantTotal()));
+        commande.recalculer();
+        return commandeRepository.save(commande);
+    }
+
+    @Override
+    @Transactional
+    public Commande annuler(Long id, Long utilisateurId) {
+        Commande commande = findById(id);
+        if (commande.getStatut() == StatutCommande.ANNULEE) {
+            throw new IllegalStateException("Cette commande est déjà annulée");
+        }
+        // Si validée → annuler la vente liée pour remettre le stock
+        if (commande.getStatut() == StatutCommande.VALIDEE && commande.getVenteId() != null) {
+            venteService.annulerVente(commande.getVenteId(), utilisateurId, "Annulation commande " + commande.getNumeroCommande());
+        }
+        commande.setStatut(StatutCommande.ANNULEE);
+        return commandeRepository.save(commande);
+    }
+
+    @Override
+    @Transactional
+    public List<Commande> payerCreditsGroupes(List<Long> ids, Double montantTotal) {
+        List<Commande> commandes = commandeRepository.findAllById(ids);
+        double restant = montantTotal;
+        for (Commande c : commandes) {
+            if (restant <= 0) break;
+            double dû = c.getMontantRestant() != null ? c.getMontantRestant() : 0.0;
+            if (dû <= 0) continue;
+            double paiement = Math.min(dû, restant);
+            double nouveauVerse = (c.getMontantVerse() != null ? c.getMontantVerse() : 0.0) + paiement;
+            c.setMontantVerse(nouveauVerse);
+            c.recalculer();
+            restant -= paiement;
+        }
+        return commandeRepository.saveAll(commandes);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

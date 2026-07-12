@@ -2,6 +2,7 @@ package com.ges.boutique.vente;
 
 import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.utilisateur.UtilisateurMapper;
+import com.ges.boutique.vente.dto.VenteAnnuleeDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -132,6 +133,18 @@ public class VenteController {
         return ResponseEntity.ok(venteMapper.toVenteMapList(credits));
     }
 
+    @GetMapping("/credits/regles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les crédits réglés")
+    public ResponseEntity<Map<String, Object>> obtenirCreditsRegles() {
+        List<Vente> credits = venteService.obtenirCreditsRegles();
+        Map<String, Object> response = new HashMap<>();
+        response.put("credits", venteMapper.toVenteMapList(credits));
+        response.put("nombreCredits", credits.size());
+        response.put("montantTotal", credits.stream().mapToDouble(Vente::getMontantTotal).sum());
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/credits/non-regles")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les crédits non réglés")
@@ -193,6 +206,30 @@ public class VenteController {
         response.put("montantTotal", ventes.stream().mapToDouble(Vente::getMontantTotal).sum());
         response.put("beneficeTotal", ventes.stream().mapToDouble(Vente::getBeneficeTotal).sum());
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Ventes annulées avec noms résolus du vendeur et de l'annuleur.
+     * Le path variable {boutiqueId} est conservé pour cohérence API multi-boutiques ;
+     * il est transmis au service mais non utilisé en filtrage (une instance = une boutique).
+     */
+    @GetMapping("/{boutiqueId}/annulees")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Obtenir les ventes annulées avec noms vendeur et annuleur")
+    public ResponseEntity<List<VenteAnnuleeDTO>> obtenirVentesAnnulees(@PathVariable Long boutiqueId) {
+        return ResponseEntity.ok(venteService.obtenirVentesAnnulees(boutiqueId));
+    }
+
+    /**
+     * Crédits actifs (non annulés) — endpoint optimisé pour éviter le chargement
+     * de toutes les ventes côté Ionic/Angular.
+     * Le path variable {boutiqueId} est conservé pour cohérence API multi-boutiques.
+     */
+    @GetMapping("/{boutiqueId}/credits-actifs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les crédits actifs (endpoint optimisé)")
+    public ResponseEntity<List<Vente>> obtenirCreditsActifs(@PathVariable Long boutiqueId) {
+        return ResponseEntity.ok(venteService.obtenirCreditsActifs(boutiqueId));
     }
 
     // ==================== MODIFICATION ====================

@@ -1,0 +1,34 @@
+@use "sass:map";
+@use "colors" as c;
+@use "mixins/gradients" as g;
+
+@each $gcolor_name, $gcolor in c.$gradient-colors {
+  $start-color: map.get($gcolor, start-color);
+  $end-color: map.get($gcolor, end-color);
+
+  .sidebar-#{$gcolor_name} {
+    .sidebar-left {
+      @include g.directional-gradient(-154deg, $start-color, $end-color);
+    }
+  }
+  .#{$gcolor_name} {
+    @include g.directional-gradient(-154deg, $start-color, $end-color);
+  }
+  .btn.#{$gcolor_name} {
+    &:active,
+    &.active {
+      @include g.directional-gradient(-90deg, $start-color, $end-color);
+    }
+  }
+}
+
+@each $color_name, $color in c.$solid-colors {
+    .sidebar-#{$color_name} {
+        .sidebar-left {
+            background: $color;
+        }
+    }
+    .#{$color_name} {
+        background: $color;
+    }
+}

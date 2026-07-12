@@ -1,0 +1,129 @@
+/* Global responsive utilities and tweaks
+   Applied site-wide to improve behavior on small/medium/large screens
+   No HTML structure changes. */
+
+// Responsive root font-size for better scaling
+html {
+  /* Use clamp to keep font-size reasonable across viewports */
+  font-size: clamp(14px, 1.1vw + 12px, 18px);
+}
+
+// Ensure media elements behave responsively
+img, video, iframe, embed, object {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+// Tables: allow horizontal scrolling on small screens
+.table-responsive, .table-responsive > .table {
+  width: 100%;
+}
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+// Make cards and panels wrap content and avoid overflow
+.card, .panel, .widget {
+  word-wrap: break-word;
+  hyphens: auto;
+}
+
+// Forms: stack inputs on small screens (but NOT full-width on all buttons)
+@media (max-width: 767px) {
+  .form-row,
+  .form-group,
+  .form-inline {
+    display: block !important;
+    width: 100% !important;
+  }
+  .form-inline .form-control {
+    width: 100% !important;
+    margin-bottom: .5rem;
+  }
+}
+
+// Containers: reduce side paddings on small screens
+.container,
+.container-fluid,
+.app-content {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 1200px) {
+  .container {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
+  }
+}
+@media (max-width: 576px) {
+  .container,
+  .container-fluid {
+    padding-left: .5rem;
+    padding-right: .5rem;
+  }
+}
+
+// Make utility widths available on small screens
+@media (max-width: 767px) {
+  .w-sm-100, [w-sm-100] {
+    width: 100% !important;
+  }
+}
+
+// Small tweaks for navigation and breadcrumbs to prevent wrapping issues
+.breadcrumb,
+.navbar,
+.page-title {
+  word-break: break-word;
+}
+
+// Modals: fit on mobile
+@media (max-width: 575.98px) {
+  .modal-dialog {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+  }
+  .modal-content {
+    border-radius: .25rem;
+  }
+}
+
+// Data tables and long content: ensure readable overflow
+@media (max-width: 991.98px) {
+  .data-table-wrapper,
+  .table-responsive {
+    overflow-x: auto;
+  }
+}
+
+// Sidebar behaviour: allow overflow and ensure it doesn't push content on small screens
+@media (max-width: 991.98px) {
+  .sidebar,
+  .app-sidebar {
+    position: relative;
+    transform: none !important;
+    width: 100% !important;
+  }
+}
+
+// Accessibility: increase tap targets on small screens (only for standalone action buttons)
+@media (max-width: 767.98px) {
+  .btn-action, .btn-tap {
+    min-height: 44px;
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+  }
+}
+
+// Utility: force images inside cards to not overflow
+.card img {
+  max-width: 100%;
+  height: auto;
+}
+
+// Final safety: ensure no horizontal scroll caused by fixed-width elements
+body {
+  overflow-x: hidden;
+}

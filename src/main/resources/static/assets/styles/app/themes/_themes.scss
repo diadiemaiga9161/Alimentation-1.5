@@ -1,0 +1,9 @@
+// Theme selection - only change this line to switch themes
+@forward "lite-purple";
+
+// This exports all variables from lite-purple as *
+// When imported as namespace, all variables will be available under that namespace
+
+// To use in component SCSS: 
+// @use 'src/assets/styles/app/themes/themes' as theme;
+// Then access variables like theme.$primary

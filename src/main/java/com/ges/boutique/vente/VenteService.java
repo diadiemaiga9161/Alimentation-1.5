@@ -1,5 +1,7 @@
 package com.ges.boutique.vente;
 
+import com.ges.boutique.vente.dto.VenteAnnuleeDTO;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -14,6 +16,7 @@ public interface VenteService {
     List<Vente> obtenirToutesVentes();
     List<Vente> obtenirTousCredits();
     List<Vente> obtenirCreditsNonRegles();
+    List<Vente> obtenirCreditsRegles();
     List<Vente> obtenirCreditsEnRetard();
     List<Vente> obtenirCreditsParClient(String clientNom);
     List<Vente> obtenirVentesParVendeur(Long vendeurId);
@@ -48,5 +51,17 @@ public interface VenteService {
     List<Map<String, Object>> obtenirTopProduitsParQuantite();
     List<Map<String, Object>> obtenirTopProduitsParChiffreAffaire();
 
+    /**
+     * Retourne les ventes annulées enrichies des noms du vendeur et de l'annuleur.
+     * Le paramètre boutiqueId est réservé pour usage futur (architecture multi-boutiques).
+     * Dans l'architecture actuelle (une instance par boutique), aucun filtre n'est appliqué.
+     */
+    List<VenteAnnuleeDTO> obtenirVentesAnnulees(Long boutiqueId);
+
+    /**
+     * Retourne les crédits actifs (non annulés) — endpoint optimisé pour éviter
+     * de charger l'intégralité des ventes côté Ionic.
+     */
+    List<Vente> obtenirCreditsActifs(Long boutiqueId);
 
 }
