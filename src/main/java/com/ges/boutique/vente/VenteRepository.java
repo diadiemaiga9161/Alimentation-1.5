@@ -85,6 +85,63 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE v.modePaiement IN :modes AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findByModePaiementInAndDateRange(@Param("modes") List<ModePaiement> modes, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
+    // =========================================================
+    // Requêtes IA — moteur analytique local
+    // =========================================================
+
+    /**
+     * CA agrégé par jour sur une période — utilisé pour la régression linéaire et l'EMA.
+     * Retourne [java.sql.Date jour, BigDecimal ca].
+     */
+    @Query(value = "SELECT DATE(v.date_vente) AS jour, COALESCE(SUM(v.montant_total), 0) AS ca " +
+                   "FROM ventes v " +
+                   "WHERE v.date_vente >= :debut AND v.date_vente <= :fin " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY DATE(v.date_vente) " +
+                   "ORDER BY DATE(v.date_vente) ASC",
+           nativeQuery = true)
+    List<Object[]> findCAParJour(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
+    /**
+     * Données RFM (Recency-Frequency-Monetary) par client sur 90 jours.
+     * Retourne [clientId, dernierAchat (Timestamp), nbAchats (Long), montantTotal (BigDecimal)].
+     */
+    @Query(value = "SELECT v.client_id, MAX(v.date_vente) AS dernierAchat, COUNT(*) AS nbAchats, " +
+                   "COALESCE(SUM(v.montant_total), 0) AS montantTotal " +
+                   "FROM ventes v " +
+                   "WHERE v.client_id IS NOT NULL " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "AND v.date_vente >= :debut " +
+                   "GROUP BY v.client_id",
+           nativeQuery = true)
+    List<Object[]> findRFMData(@Param("debut") LocalDateTime debut);
+
+    /**
+     * Date du premier achat par client — pour identifier les nouveaux clients.
+     * Retourne [clientId, premierAchat (Timestamp)].
+     */
+    @Query(value = "SELECT v.client_id, MIN(v.date_vente) AS premierAchat " +
+                   "FROM ventes v " +
+                   "WHERE v.client_id IS NOT NULL " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY v.client_id",
+           nativeQuery = true)
+    List<Object[]> findPremierAchatParClient();
+
+    /**
+     * Vélocité des produits (quantités vendues) depuis une date — pour détecter sous-performants.
+     * Retourne [produitId, quantiteTotaleVendue (BigDecimal)] trié par quantité décroissante.
+     */
+    @Query(value = "SELECT l.produit_id, COALESCE(SUM(l.quantite), 0) AS totalVendu " +
+                   "FROM lignes_vente l " +
+                   "JOIN ventes v ON l.vente_id = v.id " +
+                   "WHERE v.date_vente >= :debut " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY l.produit_id " +
+                   "ORDER BY totalVendu DESC",
+           nativeQuery = true)
+    List<Object[]> findVelociteProduits(@Param("debut") LocalDateTime debut);
+
     @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.modePaiement = :mode AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getTotalByModePaiementAndDateRange(@Param("mode") ModePaiement mode, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
