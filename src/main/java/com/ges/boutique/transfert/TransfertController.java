@@ -81,4 +81,27 @@ public class TransfertController {
             @RequestHeader(value = "X-Service-Key", required = false) String serviceKey) {
         return ResponseEntity.ok(service.recevoir(payload, serviceKey));
     }
+
+    @GetMapping("/recus")
+    public ResponseEntity<List<TransfertStock>> getRecus() {
+        return ResponseEntity.ok(service.getRecus());
+    }
+
+    @GetMapping("/envoyes")
+    public ResponseEntity<List<TransfertStock>> getEnvoyes() {
+        return ResponseEntity.ok(service.getEnvoyes());
+    }
+
+    @PostMapping("/{id}/accepter")
+    public ResponseEntity<TransfertStock> accepter(@PathVariable Long id, Authentication auth) {
+        return ResponseEntity.ok(service.accepter(id, auth.getName()));
+    }
+
+    @PostMapping("/{id}/rejeter")
+    public ResponseEntity<TransfertStock> rejeter(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication auth) {
+        String motif = body != null ? body.get("motif") : null;
+        return ResponseEntity.ok(service.rejeter(id, motif, auth.getName()));
+    }
 }

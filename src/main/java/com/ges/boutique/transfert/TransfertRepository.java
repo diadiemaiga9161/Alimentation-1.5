@@ -11,4 +11,6 @@ public interface TransfertRepository extends JpaRepository<TransfertStock, Long>
     List<TransfertStock> findAllByOrderByDateCreationDesc();
     Optional<TransfertStock> findByNumeroTransfert(String numero);
     List<TransfertStock> findByStatutOrderByDateCreationDesc(StatutTransfert statut);
+    List<TransfertStock> findByBoutiqueDestNomOrderByDateCreationDesc(String boutiqueDestNom);
+    List<TransfertStock> findByBoutiqueSourceNomOrderByDateCreationDesc(String boutiqueSourceNom);
 }

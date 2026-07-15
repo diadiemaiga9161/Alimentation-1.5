@@ -58,6 +58,9 @@ public class TransfertStock {
     @Column(name = "cree_par")
     private String creePar;
 
+    @Column(name = "motif_rejet", columnDefinition = "TEXT")
+    private String motifRejet;
+
     @OneToMany(mappedBy = "transfert", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LigneTransfert> lignes = new ArrayList<>();
 

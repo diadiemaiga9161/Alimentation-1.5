@@ -253,6 +253,63 @@ public class TransfertService {
         return saved;
     }
 
+    // ==================== RECUS / ENVOYES ====================
+
+    private String getNomBoutiqueCourante() {
+        return boutiqueRepository.findAll().stream()
+            .findFirst()
+            .map(b -> b.getNom())
+            .orElse("Cette boutique");
+    }
+
+    public List<TransfertStock> getRecus() {
+        String nomBoutique = getNomBoutiqueCourante();
+        return transfertRepository.findByBoutiqueDestNomOrderByDateCreationDesc(nomBoutique);
+    }
+
+    public List<TransfertStock> getEnvoyes() {
+        String nomBoutique = getNomBoutiqueCourante();
+        return transfertRepository.findByBoutiqueSourceNomOrderByDateCreationDesc(nomBoutique);
+    }
+
+    @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
+    public TransfertStock accepter(Long id, String currentUser) {
+        TransfertStock t = getById(id);
+        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION && t.getStatut() != StatutTransfert.EN_ATTENTE) {
+            throw new IllegalStateException("Ce transfert ne peut pas être accepté dans son état actuel");
+        }
+        // Incrémenter stock localement (destination = boutique courante)
+        for (LigneTransfert l : t.getLignes()) {
+            produitRepository.findById(l.getProduitId()).ifPresent(p -> {
+                p.setQuantite(p.getQuantite() + l.getQuantite());
+                produitRepository.save(p);
+            });
+        }
+        t.setStatut(StatutTransfert.ACCEPTE);
+        t.setDateConfirmation(LocalDateTime.now());
+        t.setConfirmeParUser(currentUser);
+        t.getHistorique().add(HistoriqueTransfert.creer(t, "ACCEPTATION",
+            "Accepté par " + currentUser, currentUser));
+        TransfertStock saved = transfertRepository.save(t);
+        notifService.creer("TRANSFERT_ACCEPTE", "Transfert accepté",
+            "Transfert " + saved.getNumeroTransfert() + " accepté", "/pages/transferts");
+        return saved;
+    }
+
+    @Transactional
+    public TransfertStock rejeter(Long id, String motif, String currentUser) {
+        TransfertStock t = getById(id);
+        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION && t.getStatut() != StatutTransfert.EN_ATTENTE) {
+            throw new IllegalStateException("Ce transfert ne peut pas être rejeté dans son état actuel");
+        }
+        t.setStatut(StatutTransfert.REJETE);
+        t.setMotifRejet(motif);
+        t.getHistorique().add(HistoriqueTransfert.creer(t, "REJET",
+            "Rejeté par " + currentUser + (motif != null ? " — " + motif : ""), currentUser));
+        return transfertRepository.save(t);
+    }
+
     // ==================== STOCK ====================
 
     private void deduireStock(TransfertStock t) {
