@@ -98,7 +98,12 @@ public class CommandeServiceImpl implements CommandeService {
         venteRequest.setClientPrenom(commande.getClientPrenom());
         venteRequest.setClientTelephone(commande.getClientTelephone());
         venteRequest.setModePaiement(commande.getModePaiement());
-        venteRequest.setReferencePaiement(commande.getReferencePaiement());
+        // Si mode != ESPECES et référence absente, on la génère pour ne pas bloquer la validation
+        String ref = commande.getReferencePaiement();
+        if ((ref == null || ref.trim().isEmpty()) && commande.getModePaiement() != ModePaiement.ESPECES) {
+            ref = "CMD-" + commande.getNumeroCommande();
+        }
+        venteRequest.setReferencePaiement(ref);
         venteRequest.setEstCredit(commande.getEstCredit());
         venteRequest.setMontantVerse(commande.getMontantVerse());
         venteRequest.setDateEcheance(commande.getDateEcheance());
