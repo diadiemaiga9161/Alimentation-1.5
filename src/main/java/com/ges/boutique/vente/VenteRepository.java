@@ -1,9 +1,11 @@
 package com.ges.boutique.vente;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -165,4 +167,25 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
 
     @Query("SELECT v FROM Vente v LEFT JOIN FETCH v.lignes WHERE (v.clientNom = :nom OR v.clientTelephone = :telephone) AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findByClientNomOrTelephone(@Param("nom") String nom, @Param("telephone") String telephone);
+
+    // ==================== PARAMETRES — COMPTEURS STATUT ====================
+
+    @Query("SELECT COUNT(v) FROM Vente v WHERE v.annulee = true")
+    Long countVentesAnnulees();
+
+    @Query("SELECT COUNT(v) FROM Vente v WHERE v.estCredit = true AND v.creditRegle = true " +
+           "AND (v.annulee IS NULL OR v.annulee = false)")
+    Long countCreditsRegles();
+
+    // ==================== PARAMETRES — SUPPRESSION EN BLOC ====================
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query(value = "DELETE FROM lignes_vente WHERE vente_id IN :venteIds", nativeQuery = true)
+    int deleteLignesByVenteIds(@Param("venteIds") List<Long> venteIds);
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query(value = "DELETE FROM ventes WHERE id IN :venteIds", nativeQuery = true)
+    int deleteVentesByIds(@Param("venteIds") List<Long> venteIds);
 }

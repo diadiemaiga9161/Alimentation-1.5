@@ -1,9 +1,11 @@
 package com.ges.boutique.caisse;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -53,4 +55,37 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     @Query("SELECT o FROM OperationCaisse o WHERE o.vente.id = :venteId AND o.type = :type")
     Optional<OperationCaisse> findOperationVenteByVenteIdAndType(@Param("venteId") Long venteId,
                                                                  @Param("type") TypeOperationCaisse type);
+
+    // Tous les règlements de crédit sur une période
+    @Query("SELECT o FROM OperationCaisse o WHERE o.type = 'REGLEMENT_CREDIT' AND o.dateOperation BETWEEN :dateDebut AND :dateFin ORDER BY o.dateOperation DESC")
+    List<OperationCaisse> findReglementsByPeriode(@Param("dateDebut") LocalDateTime dateDebut,
+                                                  @Param("dateFin") LocalDateTime dateFin);
+
+    // Tous les règlements de crédit sans filtre de période
+    @Query("SELECT o FROM OperationCaisse o WHERE o.type = 'REGLEMENT_CREDIT' ORDER BY o.dateOperation DESC")
+    List<OperationCaisse> findAllReglements();
+
+    // Trouver une opération par venteCreditId et type (ex : VENTE_CREDIT pour une vente donnée)
+    Optional<OperationCaisse> findByVenteCreditIdAndType(Long venteCreditId, TypeOperationCaisse type);
+
+    // ==================== PARAMETRES — NETTOYAGE ====================
+
+    /**
+     * Annule la référence vente pour les opérations caisse liées aux ventes
+     * qui vont être supprimées (vente_id est nullable dans operations_caisse).
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("UPDATE OperationCaisse o SET o.vente = null WHERE o.vente.id IN :venteIds")
+    int nullOutVenteReferences(@Param("venteIds") List<Long> venteIds);
+
+    /**
+     * Supprime les opérations de caisse antérieures à la date donnée,
+     * en conservant les crédits VENTE_CREDIT non encore réglés (actifs).
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM OperationCaisse o WHERE o.dateOperation < :date " +
+           "AND NOT (o.type = 'VENTE_CREDIT' AND o.estReglee = false)")
+    int deleteOldOperationsExceptActiveCredits(@Param("date") LocalDateTime date);
 }
