@@ -766,7 +766,48 @@ public class CaisseServiceImpl implements CaisseService {
             utilisateurRepository.findById(utilisateurId).ifPresent(operation::setUtilisateur);
         }
 
-        return operationRepository.save(operation);
+        OperationCaisse savedOperation = operationRepository.save(operation);
+
+        // BUG FIX : si un acompte initial EN CASH a été versé à la création du crédit,
+        // l'enregistrer comme REGLEMENT_CREDIT dans la caisse (argent réellement reçu).
+        // L'éventuelle avance client (montantAvanceUtilise) est EXCLUE : elle a déjà été
+        // comptabilisée en caisse lors du dépôt initial (enregistrerAvance → entreeCaisse).
+        double avanceUtilisee = vente.getMontantAvanceUtilise() != null ? vente.getMontantAvanceUtilise() : 0.0;
+        double montantCashVerse = montantVerseInitial - avanceUtilisee;
+
+        if (montantCashVerse > 0) {
+            caisse.setSoldeActuel(soldeAvant + montantCashVerse);
+            caisse.setTotalEntrees(caisse.getTotalEntrees() + montantCashVerse);
+            caisse.setDerniereOperation(LocalDateTime.now());
+            caisseRepository.save(caisse);
+
+            String nomClient = clientNom != null ? clientNom
+                    : (vente.getClientNom() != null ? vente.getClientNom() : "");
+
+            OperationCaisse acompte = new OperationCaisse();
+            acompte.setCaisse(caisse);
+            acompte.setType(TypeOperationCaisse.REGLEMENT_CREDIT);
+            acompte.setMontant(montantCashVerse);
+            acompte.setSoldeAvant(soldeAvant);
+            acompte.setSoldeApres(caisse.getSoldeActuel());
+            acompte.setMotif("Acompte initial - " + nomClient + " - Vente N°" + vente.getNumeroVente());
+            acompte.setVente(vente);
+            acompte.setEstReglee(true);
+            acompte.setDateOperation(LocalDateTime.now());
+            acompte.setMontantVerse(montantCashVerse);
+            acompte.setMontantRestant(montantRestant);
+            acompte.setVenteCreditId(vente.getId());
+            acompte.setClientNom(nomClient);
+            acompte.setClientTelephone(clientTelephone != null ? clientTelephone : vente.getClientTelephone());
+            if (utilisateurId != null) {
+                utilisateurRepository.findById(utilisateurId).ifPresent(acompte::setUtilisateur);
+            }
+            operationRepository.save(acompte);
+            log.info("Acompte initial cash enregistré en caisse : {} F (avance exclue: {} F) - client: {} - vente: {}",
+                    montantCashVerse, avanceUtilisee, nomClient, vente.getNumeroVente());
+        }
+
+        return savedOperation;
     }
 
     @Override
@@ -1866,5 +1907,73 @@ public class CaisseServiceImpl implements CaisseService {
     private Double arrondir(Double valeur) {
         if (valeur == null) return 0.0;
         return BigDecimal.valueOf(valeur).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    // ==================== ANNULATION RÈGLEMENT CRÉDIT ====================
+
+    @Override
+    @Transactional
+    public OperationCaisse annulerReglementCredit(Long operationId, Long utilisateurId) {
+        OperationCaisse op = operationRepository.findById(operationId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Opération introuvable: " + operationId));
+
+        if (op.isAnnule()) {
+            throw new IllegalStateException("Ce règlement est déjà annulé");
+        }
+
+        Caisse caisse = op.getCaisse();
+        double montant = op.getMontant();
+
+        // Reverse l'entrée en caisse
+        caisse.setSoldeActuel(caisse.getSoldeActuel() - montant);
+        caisse.setTotalEntrees(Math.max(0.0, caisse.getTotalEntrees() - montant));
+        caisse.setDerniereOperation(LocalDateTime.now());
+        caisseRepository.save(caisse);
+
+        // Rétablir la dette crédit sur l'opération VENTE_CREDIT associée
+        if (op.getVenteCreditId() != null) {
+            OperationCaisse venteCredit = operationRepository
+                    .findByVenteCreditIdAndType(op.getVenteCreditId(), TypeOperationCaisse.VENTE_CREDIT)
+                    .orElse(null);
+            if (venteCredit != null) {
+                double nouveauVerse = Math.max(0.0,
+                        (venteCredit.getMontantVerse() != null ? venteCredit.getMontantVerse() : 0.0) - montant);
+                venteCredit.setMontantVerse(nouveauVerse);
+                double montantCredit = venteCredit.getMontant() != null ? venteCredit.getMontant() : 0.0;
+                venteCredit.setMontantRestant(montantCredit - nouveauVerse);
+                venteCredit.setEstReglee(venteCredit.getMontantRestant() <= 0.01);
+                operationRepository.save(venteCredit);
+            }
+
+            // Mettre à jour la Vente elle-même (source de vérité pour getCreditsNonRegles)
+            venteRepository.findById(op.getVenteCreditId()).ifPresent(vente -> {
+                double nouveauVerse = Math.max(0.0,
+                        (vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0) - montant);
+                vente.setMontantVerse(nouveauVerse);
+                double montantTotal = vente.getMontantTotal() != null ? vente.getMontantTotal() : 0.0;
+                vente.setMontantRestant(montantTotal - nouveauVerse);
+                if (vente.getMontantRestant() > 0.01) {
+                    vente.setCreditRegle(false);
+                    vente.setDateReglement(null);
+                }
+                venteRepository.save(vente);
+            });
+        }
+
+        op.setAnnule(true);
+        op.setDateAnnulationReglement(LocalDateTime.now());
+        log.info("Règlement crédit #{} annulé: {} F retiré de la caisse", operationId, montant);
+        return operationRepository.save(op);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OperationCaisse> getReglementsParPeriode(String dateDebutStr, String dateFinStr) {
+        if (dateDebutStr != null && dateFinStr != null) {
+            LocalDateTime dateDebut = LocalDate.parse(dateDebutStr).atStartOfDay();
+            LocalDateTime dateFin = LocalDate.parse(dateFinStr).atTime(23, 59, 59);
+            return operationRepository.findReglementsByPeriode(dateDebut, dateFin);
+        }
+        return operationRepository.findAllReglements();
     }
 }

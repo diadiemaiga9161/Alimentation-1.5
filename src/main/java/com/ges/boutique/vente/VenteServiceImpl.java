@@ -441,12 +441,32 @@ public class VenteServiceImpl implements VenteService {
         }
 
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
-            if (Boolean.TRUE.equals(vente.getCreditRegle())) {
-                throw new IllegalStateException("Impossible d'annuler un crédit déjà réglé");
+            double montantRegle = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0;
+            double montantTotal  = vente.getMontantTotal()  != null ? vente.getMontantTotal()  : 0;
+
+            // Crédit partiellement réglé → bloquer (impossible de rembourser partiellement via annulation)
+            if (montantRegle > 0 && montantRegle < montantTotal) {
+                throw new RuntimeException("Impossible d'annuler : ce crédit est partiellement réglé ("
+                        + montantRegle + " payé sur " + montantTotal + ")");
             }
-            if (vente.getMontantVerse() != null && vente.getMontantVerse() > 0) {
-                throw new IllegalStateException("Impossible d'annuler un crédit avec des règlements partiels");
+
+            // Crédit non réglé → restaurer stock uniquement, ne pas toucher la caisse
+            // (aucun argent n'a été encaissé, il n'y a rien à déduire)
+            if (montantRegle <= 0) {
+                retablirStockAncienneVente(vente);
+                vente.setAnnulee(true);
+                vente.setMotifAnnulation(motif);
+                vente.setDateAnnulation(LocalDateTime.now());
+                vente.setUtilisateurAnnulation(utilisateurId);
+                Vente venteAnnuleeNonReglee = venteRepository.save(vente);
+                notificationService.notifierVenteAnnulee(Map.of("venteId", venteId, "montant", vente.getMontantTotal()));
+                notificationService.notifierMiseAJourDashboard();
+                return venteAnnuleeNonReglee;
             }
+
+            // Crédit totalement réglé (montantRegle >= montantTotal) :
+            // l'argent avait été encaissé via les versements → procéder à l'annulation normale
+            // avec déduction caisse (REMBOURSEMENT_COMMANDE géré par annulerVenteCreditAvecRepercussion)
         }
 
         retablirStockAncienneVente(vente);
