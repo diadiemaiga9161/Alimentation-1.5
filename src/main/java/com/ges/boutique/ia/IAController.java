@@ -32,10 +32,7 @@ public class IAController {
     public ResponseEntity<?> obtenirProfil() {
         Optional<ProfilIA> profil = profilService.obtenirProfil();
         if (profil.isEmpty()) {
-            return ResponseEntity.ok(Map.of(
-                    "configure", false,
-                    "message", "Profil IA non configuré. Appelez POST /api/ia/profil pour le créer."
-            ));
+            return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(profil.get());
     }
