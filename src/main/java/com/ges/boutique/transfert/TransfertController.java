@@ -39,6 +39,11 @@ public class TransfertController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/partenaires/{id}/produits")
+    public ResponseEntity<List<Object>> getProduitsBoutique(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getProduitsBoutique(id));
+    }
+
     // ==================== TRANSFERTS ====================
 
     @GetMapping
@@ -103,5 +108,20 @@ public class TransfertController {
             Authentication auth) {
         String motif = body != null ? body.get("motif") : null;
         return ResponseEntity.ok(service.rejeter(id, motif, auth.getName()));
+    }
+
+    // ==================== PAIEMENTS ====================
+
+    @GetMapping("/{id}/paiements")
+    public ResponseEntity<List<PaiementTransfert>> getPaiements(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getPaiementsTransfert(id));
+    }
+
+    @PostMapping("/{id}/paiements")
+    public ResponseEntity<PaiementTransfert> ajouterPaiement(
+            @PathVariable Long id,
+            @RequestBody PaiementTransfertRequest req,
+            Authentication auth) {
+        return ResponseEntity.ok(service.ajouterPaiement(id, req, auth.getName()));
     }
 }

@@ -3,7 +3,12 @@ package com.ges.boutique.transfert;
 import com.ges.boutique.boutique.Boutique;
 import com.ges.boutique.boutique.BoutiqueRepository;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.inventaire.MouvementStock;
+import com.ges.boutique.inventaire.MouvementStockRepository;
+import com.ges.boutique.inventaire.TypeMouvement;
 import com.ges.boutique.notification.NotificationPersistanceService;
+import com.ges.boutique.produit.Categorie;
+import com.ges.boutique.produit.CategorieRepository;
 import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,17 +17,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -35,6 +44,9 @@ public class TransfertService {
     private final BoutiqueRepository boutiqueRepository;
     private final NotificationPersistanceService notifService;
     private final RestTemplate restTemplate;
+    private final MouvementStockRepository mouvementStockRepository;
+    private final CategorieRepository categorieRepository;
+    private final PaiementTransfertRepository paiementTransfertRepository;
 
     @Value("${transfert.service.key:}")
     private String transfertServiceKey;
@@ -64,6 +76,25 @@ public class TransfertService {
     @Transactional
     public void supprimerPartenaire(Long id) {
         partenaireRepository.deleteById(id);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> getProduitsBoutique(Long partenaireId) {
+        BoutiquePartenaire partenaire = partenaireRepository.findById(partenaireId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Partenaire introuvable: " + partenaireId));
+        try {
+            String url = partenaire.getUrl().stripTrailing() + "/api/produits";
+            HttpHeaders headers = new HttpHeaders();
+            if (!transfertServiceKey.isBlank()) {
+                headers.set("X-Service-Key", transfertServiceKey);
+            }
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<List> resp = restTemplate.exchange(url, HttpMethod.GET, entity, List.class);
+            return resp.getBody() != null ? resp.getBody() : List.of();
+        } catch (Exception e) {
+            log.warn("Impossible de récupérer les produits de {}: {}", partenaire.getNom(), e.getMessage());
+            return List.of();
+        }
     }
 
     // ==================== TRANSFERTS ====================
@@ -279,13 +310,49 @@ public class TransfertService {
         if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION && t.getStatut() != StatutTransfert.EN_ATTENTE) {
             throw new IllegalStateException("Ce transfert ne peut pas être accepté dans son état actuel");
         }
-        // Incrémenter stock localement (destination = boutique courante)
+
         for (LigneTransfert l : t.getLignes()) {
-            produitRepository.findById(l.getProduitId()).ifPresent(p -> {
-                p.setQuantite(p.getQuantite() + l.getQuantite());
-                produitRepository.save(p);
-            });
+            Optional<Produit> optProduit = produitRepository.findByNomIgnoreCase(l.getProduitNom()).stream().findFirst();
+
+            Produit produit;
+            int quantiteAvant;
+
+            if (optProduit.isPresent()) {
+                produit = optProduit.get();
+                quantiteAvant = produit.getQuantite();
+                produit.setQuantite(produit.getQuantite() + l.getQuantite());
+                produitRepository.save(produit);
+            } else {
+                Categorie categorieDefaut = categorieRepository.findAll().stream().findFirst().orElse(null);
+                if (categorieDefaut == null) {
+                    log.warn("Impossible de créer le produit '{}' : aucune catégorie disponible", l.getProduitNom());
+                    continue;
+                }
+                produit = new Produit();
+                produit.setNom(l.getProduitNom());
+                produit.setQuantite(l.getQuantite());
+                produit.setPrixAchat(l.getPrixUnitaire() != null ? l.getPrixUnitaire() : 0.0);
+                produit.setPrixVente(l.getPrixUnitaire() != null ? l.getPrixUnitaire() : 0.0);
+                produit.setSeuilAlerte(5);
+                produit.setDescription("Créé automatiquement via transfert " + t.getNumeroTransfert());
+                produit.setDateCreation(LocalDate.now());
+                produit.setCategorie(categorieDefaut);
+                produitRepository.save(produit);
+                quantiteAvant = 0;
+            }
+
+            MouvementStock m = new MouvementStock();
+            m.setProduit(produit);
+            m.setQuantite(l.getQuantite());
+            m.setTypeMouvement(TypeMouvement.ENTREE);
+            m.setQuantiteAvant(quantiteAvant);
+            m.setQuantiteApres(produit.getQuantite());
+            m.setMotif("Reçu de " + t.getBoutiqueSourceNom());
+            m.setReferenceType("TRANSFERT");
+            m.setReferenceId(t.getId());
+            mouvementStockRepository.save(m);
         }
+
         t.setStatut(StatutTransfert.ACCEPTE);
         t.setDateConfirmation(LocalDateTime.now());
         t.setConfirmeParUser(currentUser);
@@ -310,15 +377,47 @@ public class TransfertService {
         return transfertRepository.save(t);
     }
 
+    // ==================== PAIEMENTS ====================
+
+    public List<PaiementTransfert> getPaiementsTransfert(Long transfertId) {
+        return paiementTransfertRepository.findByTransfertIdOrderByDatePaiementDesc(transfertId);
+    }
+
+    @Transactional
+    public PaiementTransfert ajouterPaiement(Long transfertId, PaiementTransfertRequest req, String currentUser) {
+        TransfertStock t = getById(transfertId);
+        PaiementTransfert p = new PaiementTransfert();
+        p.setTransfert(t);
+        p.setMontant(req.getMontant());
+        p.setModePaiement(req.getModePaiement());
+        p.setNotes(req.getNotes());
+        p.setEnregistrePar(currentUser);
+        return paiementTransfertRepository.save(p);
+    }
+
     // ==================== STOCK ====================
 
     private void deduireStock(TransfertStock t) {
         for (LigneTransfert l : t.getLignes()) {
-            produitRepository.findById(l.getProduitId()).ifPresent(p -> {
-                int nouvelleQte = Math.max(0, p.getQuantite() - l.getQuantite());
+            Optional<Produit> opt = produitRepository.findById(l.getProduitId());
+            if (opt.isPresent()) {
+                Produit p = opt.get();
+                int ancienneQuantite = p.getQuantite();
+                int nouvelleQte = Math.max(0, ancienneQuantite - l.getQuantite());
                 p.setQuantite(nouvelleQte);
                 produitRepository.save(p);
-            });
+
+                MouvementStock m = new MouvementStock();
+                m.setProduit(p);
+                m.setQuantite(l.getQuantite());
+                m.setTypeMouvement(TypeMouvement.SORTIE);
+                m.setQuantiteAvant(ancienneQuantite);
+                m.setQuantiteApres(p.getQuantite());
+                m.setMotif("Envoyé à " + t.getBoutiqueDestNom());
+                m.setReferenceType("TRANSFERT");
+                m.setReferenceId(t.getId());
+                mouvementStockRepository.save(m);
+            }
         }
     }
 
