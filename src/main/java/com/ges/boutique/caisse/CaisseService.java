@@ -109,4 +109,12 @@ public interface CaisseService {
 
     // Paiements groupés
     List<Map<String, Object>> getPaiementsGroupes();
+
+    // Annulation de règlement de crédit
+    OperationCaisse annulerReglementCredit(Long operationId, Long utilisateurId);
+    List<OperationCaisse> getReglementsParPeriode(String dateDebut, String dateFin);
+
+    // Page Paramètres : réinitialisation et suppression historique
+    void reinitialiserJour();
+    void supprimerHistorique();
 }

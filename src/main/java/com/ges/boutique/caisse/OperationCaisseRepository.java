@@ -88,4 +88,16 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     @Query("DELETE FROM OperationCaisse o WHERE o.dateOperation < :date " +
            "AND NOT (o.type = 'VENTE_CREDIT' AND o.estReglee = false)")
     int deleteOldOperationsExceptActiveCredits(@Param("date") LocalDateTime date);
+
+    // ========== PAGE PARAMÈTRES : RÉINITIALISATION / SUPPRESSION HISTORIQUE ==========
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM OperationCaisse o WHERE o.dateOperation BETWEEN :debut AND :fin")
+    void deleteByDateOperationBetween(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM OperationCaisse o")
+    void deleteAllOperations();
 }

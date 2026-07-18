@@ -223,6 +223,24 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/credits/reglements")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @Operation(summary = "Lister tous les règlements de crédit (optionnel: filtré par période)")
+    public ResponseEntity<?> getReglementsParPeriode(
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        return ResponseEntity.ok(caisseService.getReglementsParPeriode(dateDebut, dateFin));
+    }
+
+    @PostMapping("/credits/reglement/{operationId}/annuler")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @Operation(summary = "Annuler un règlement de crédit (reverse l'entrée caisse et la dette)")
+    public ResponseEntity<?> annulerReglementCredit(
+            @PathVariable Long operationId,
+            @RequestParam Long utilisateurId) {
+        return ResponseEntity.ok(caisseService.annulerReglementCredit(operationId, utilisateurId));
+    }
+
     // ==================== OPÉRATIONS PAR PÉRIODE ====================
 
     @GetMapping("/operations/aujourdhui")
@@ -430,6 +448,30 @@ public class CaisseController {
     @Operation(summary = "Obtenir l'historique des paiements groupés")
     public ResponseEntity<List<Map<String, Object>>> getPaiementsGroupes() {
         return ResponseEntity.ok(caisseService.getPaiementsGroupes());
+    }
+
+    // ==================== PAGE PARAMÈTRES : RÉINITIALISATION / HISTORIQUE ====================
+
+    @PostMapping("/reinitialiser")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Réinitialiser les statistiques de la caisse du jour")
+    public ResponseEntity<Map<String, Object>> reinitialiserJour() {
+        caisseService.reinitialiserJour();
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Caisse du jour réinitialisée avec succès");
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/historique")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Supprimer tout l'historique des opérations de caisse")
+    public ResponseEntity<Map<String, Object>> supprimerHistorique() {
+        caisseService.supprimerHistorique();
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Historique supprimé avec succès");
+        return ResponseEntity.ok(response);
     }
 
     // ==================== TRANSFERT CAISSE → BANQUE ====================

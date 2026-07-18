@@ -1894,6 +1894,40 @@ public class CaisseServiceImpl implements CaisseService {
         return result;
     }
 
+    // ==================== RÉINITIALISATION / SUPPRESSION HISTORIQUE ====================
+
+    @Override
+    @Transactional
+    public void reinitialiserJour() {
+        log.info("=== RÉINITIALISATION CAISSE DU JOUR ===");
+        LocalDateTime debut = LocalDate.now().atStartOfDay();
+        LocalDateTime fin = LocalDate.now().atTime(LocalTime.MAX);
+
+        // Supprimer toutes les opérations de la journée courante
+        operationRepository.deleteByDateOperationBetween(debut, fin);
+        log.info("Opérations du jour supprimées");
+
+        // Remettre les compteurs de la caisse ouverte à zéro
+        caisseRepository.findCaisseOuverte().ifPresent(caisse -> {
+            caisse.setSoldeActuel(0.0);
+            caisse.setSoldeSysteme(0.0);
+            caisse.setSoldeInitial(0.0);
+            caisse.setTotalEntrees(0.0);
+            caisse.setTotalSorties(0.0);
+            caisse.setNombreOperations(0);
+            caisseRepository.save(caisse);
+            log.info("Compteurs de la caisse ouverte réinitialisés à 0");
+        });
+    }
+
+    @Override
+    @Transactional
+    public void supprimerHistorique() {
+        log.info("=== SUPPRESSION HISTORIQUE COMPLET DES OPÉRATIONS DE CAISSE ===");
+        operationRepository.deleteAllOperations();
+        log.info("Historique complet supprimé");
+    }
+
     // ==================== METHODES PRIVEES ====================
 
     private void verifierEtOuvrirCaisseSiNecessaire() {
