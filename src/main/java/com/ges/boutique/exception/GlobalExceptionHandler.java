@@ -6,8 +6,10 @@ import io.jsonwebtoken.JwtException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.OptimisticLockException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -237,6 +239,27 @@ public class GlobalExceptionHandler {
         body.put(ERROR_CODE, "SOLDE_INSUFFISANT");
 
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Handle optimistic locking failures (concurrent stock modifications)
+     */
+    @ExceptionHandler({OptimisticLockException.class, ObjectOptimisticLockingFailureException.class})
+    public ResponseEntity<Map<String, Object>> handleOptimisticLock(
+            Exception ex,
+            WebRequest request) {
+
+        log.warn("Optimistic lock conflict: {}", ex.getMessage());
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.CONFLICT,
+                "Concurrent Modification",
+                "Le stock a été modifié simultanément — veuillez réessayer",
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "OPTIMISTIC_LOCK_CONFLICT");
+
+        return new ResponseEntity<>(body, HttpStatus.CONFLICT);
     }
 
     /**

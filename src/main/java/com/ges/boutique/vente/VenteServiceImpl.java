@@ -7,6 +7,7 @@ import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
 import com.ges.boutique.config.NotificationService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.websocket.StockWebSocketService;
 import com.ges.boutique.exception.StockInsuffisantException;
 import com.ges.boutique.inventaire.InventaireService;
 import com.ges.boutique.inventaire.MouvementStock;
@@ -49,6 +50,10 @@ public class VenteServiceImpl implements VenteService {
     private final AvanceClientService avanceClientService;
     private final NotificationService notificationService;
     private final MouvementStockRepository mouvementStockRepository;
+    private final StockWebSocketService stockWebSocketService;
+
+    /** Identifiant de la boutique courante (1 instance = 1 boutique dans cette architecture). */
+    private static final Long BOUTIQUE_ID = 1L;
 
     // ==================== CRÉATION VENTES ====================
 
@@ -1095,8 +1100,13 @@ public class VenteServiceImpl implements VenteService {
                 syncProduitQuantite(produit, niveauxUpdated);
             }
 
-            produitRepository.findById(produitId).ifPresent(p ->
-                    notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite()));
+            produitRepository.findById(produitId).ifPresent(p -> {
+                notificationService.notifierMiseAJourStock(p.getId(), p.getNom(), p.getQuantite());
+                stockWebSocketService.diffuserMiseAJourStock(BOUTIQUE_ID, p.getId(), p.getNom(), p.getQuantite());
+                if (p.getQuantite() == 0) {
+                    stockWebSocketService.diffuserAlerteStock(BOUTIQUE_ID, "Rupture de stock : " + p.getNom());
+                }
+            });
         }
 
         if (!mouvementsNiveaux.isEmpty()) {

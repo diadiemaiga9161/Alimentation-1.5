@@ -7,6 +7,7 @@ import com.ges.boutique.inventaire.MouvementStock;
 import com.ges.boutique.inventaire.MouvementStockRepository;
 import com.ges.boutique.inventaire.TypeMouvement;
 import com.ges.boutique.notification.NotificationPersistanceService;
+import com.ges.boutique.websocket.StockWebSocketService;
 import com.ges.boutique.produit.Categorie;
 import com.ges.boutique.produit.CategorieRepository;
 import com.ges.boutique.produit.Produit;
@@ -47,6 +48,9 @@ public class TransfertService {
     private final MouvementStockRepository mouvementStockRepository;
     private final CategorieRepository categorieRepository;
     private final PaiementTransfertRepository paiementTransfertRepository;
+    private final StockWebSocketService stockWebSocketService;
+
+    private static final Long BOUTIQUE_ID = 1L;
 
     @Value("${transfert.service.key:}")
     private String transfertServiceKey;
@@ -152,6 +156,14 @@ public class TransfertService {
         // Notification interne
         notifService.creer("TRANSFERT_ENVOYE", "Transfert envoyé",
                 "Transfert " + saved.getNumeroTransfert() + " → " + dest.getNom(), "/pages/transferts");
+
+        // Notification WebSocket temps réel
+        stockWebSocketService.diffuserTransfert(BOUTIQUE_ID, Map.of(
+                "type", "TRANSFERT_ENVOYE",
+                "numeroTransfert", saved.getNumeroTransfert(),
+                "destination", dest.getNom(),
+                "timestamp", System.currentTimeMillis()
+        ));
 
         return saved;
     }
@@ -280,6 +292,14 @@ public class TransfertService {
         notifService.creer("TRANSFERT_RECU", "Transfert reçu",
                 "Transfert reçu de " + saved.getBoutiqueSourceNom() +
                 " — " + saved.getNumeroTransfert(), "/pages/transferts");
+
+        // Notification WebSocket temps réel
+        stockWebSocketService.diffuserTransfert(BOUTIQUE_ID, Map.of(
+                "type", "TRANSFERT_RECU",
+                "numeroTransfert", saved.getNumeroTransfert(),
+                "source", saved.getBoutiqueSourceNom(),
+                "timestamp", System.currentTimeMillis()
+        ));
 
         return saved;
     }

@@ -23,6 +23,7 @@ public class IAController {
     private final AnalyseIAService analyseService;
     private final ProfilIAService profilService;
     private final FeedbackRecommandationRepository feedbackRepository;
+    private final PrevisionService previsionService;
 
     // -------------------------------------------------------
     // Profil IA
@@ -117,6 +118,21 @@ public class IAController {
                     "tendanceCA",  "STABLE",
                     "erreur",      e.getMessage()
             ));
+        }
+    }
+
+    // -------------------------------------------------------
+    // Prévisions de stock (rupture, vélocité, réappro)
+    // -------------------------------------------------------
+
+    @GetMapping("/previsions")
+    public ResponseEntity<List<Map<String, Object>>> getPrevisions() {
+        try {
+            List<Map<String, Object>> previsions = previsionService.genererPrevisions();
+            return ResponseEntity.ok(previsions);
+        } catch (Exception e) {
+            log.error("Erreur lors de la génération des prévisions", e);
+            return ResponseEntity.internalServerError().build();
         }
     }
 

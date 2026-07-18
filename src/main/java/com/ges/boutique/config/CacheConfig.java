@@ -21,8 +21,10 @@ public class CacheConfig {
                 "fournisseurs",
                 "clients",
                 "boutique",
+                "boutiques",
                 "employes",
                 "rapports",
+                "ventes",
                 "ventes-resume",
                 "inventaire",
                 "boutiques-partenaires"

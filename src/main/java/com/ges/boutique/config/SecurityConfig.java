@@ -63,6 +63,10 @@ public class SecurityConfig {
                         // WebSocket STOMP
                         .requestMatchers("/ws/**").permitAll()
 
+                        // Sync batch offline (clients mobiles — ping + batch)
+                        .requestMatchers("/api/sync/ping").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/sync/batch").authenticated()
+
                         // Auth publique
                         .requestMatchers("/api/auth/**", "/api/login", "/api/register").permitAll()
 

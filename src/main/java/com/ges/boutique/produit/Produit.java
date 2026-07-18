@@ -27,6 +27,10 @@ public class Produit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(name = "version")
+    private Long version = 0L;
+
     @Column(nullable = false)
     private String nom;
 
