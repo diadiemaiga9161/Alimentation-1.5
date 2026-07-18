@@ -188,4 +188,36 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Transactional
     @Query(value = "DELETE FROM ventes WHERE id IN :venteIds", nativeQuery = true)
     int deleteVentesByIds(@Param("venteIds") List<Long> venteIds);
+
+    // ==================== GRAPHIQUES ANGULAR — RAPPORTS ====================
+
+    /**
+     * Top 10 produits les plus vendus sur une période (quantité cumulée).
+     * Retourne [produitNom (String), quantiteVendue (Long)].
+     */
+    @Query(value = "SELECT p.nom AS produitNom, COALESCE(SUM(l.quantite), 0) AS quantiteVendue " +
+                   "FROM lignes_vente l " +
+                   "JOIN ventes v ON l.vente_id = v.id " +
+                   "JOIN produits p ON l.produit_id = p.id " +
+                   "WHERE v.date_vente >= :debut " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY l.produit_id, p.nom " +
+                   "ORDER BY quantiteVendue DESC " +
+                   "LIMIT 10",
+           nativeQuery = true)
+    List<Object[]> findTopProduits(@Param("debut") LocalDateTime debut);
+
+    /**
+     * Ventes agrégées par heure pour la journée courante.
+     * Retourne [heure (Integer 0-23), nbVentes (Long), ca (BigDecimal)].
+     */
+    @Query(value = "SELECT HOUR(v.date_vente) AS heure, COUNT(v.id) AS nbVentes, " +
+                   "COALESCE(SUM(v.montant_total), 0) AS ca " +
+                   "FROM ventes v " +
+                   "WHERE DATE(v.date_vente) = CURDATE() " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY HOUR(v.date_vente) " +
+                   "ORDER BY HOUR(v.date_vente) ASC",
+           nativeQuery = true)
+    List<Object[]> findVentesParHeure();
 }
