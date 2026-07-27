@@ -22,4 +22,8 @@ public class LigneAchatRequest {
     // Champs communs obligatoires
     private Integer quantite;
     private Double prixAchatUnitaire;
+
+    // Optionnel : nouveau prix de vente recalculé (CUMP) côté front, déjà confirmé par l'utilisateur.
+    // Ne s'applique que pour un produit EXISTANT (produitId != null). Si null/absent, aucun changement.
+    private Double nouveauPrixVente;
 }

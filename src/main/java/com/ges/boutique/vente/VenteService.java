@@ -19,6 +19,7 @@ public interface VenteService {
     List<Vente> obtenirCreditsRegles();
     List<Vente> obtenirCreditsEnRetard();
     List<Vente> obtenirCreditsParClient(String clientNom);
+    List<Vente> obtenirCreditsParClientId(Long clientId);
     List<Vente> obtenirVentesParVendeur(Long vendeurId);
     List<Vente> obtenirVentesParDateRange(LocalDate dateDebut, LocalDate dateFin);
     List<Vente> obtenirVentesDuJour();

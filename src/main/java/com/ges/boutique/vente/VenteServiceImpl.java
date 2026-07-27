@@ -238,6 +238,13 @@ public class VenteServiceImpl implements VenteService {
     }
 
     @Override
+    public List<Vente> obtenirCreditsParClientId(Long clientId) {
+        return venteRepository.findByClientId(clientId).stream()
+                .filter(v -> Boolean.TRUE.equals(v.getEstCredit()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<Vente> obtenirVentesParVendeur(Long vendeurId) {
         return venteRepository.findByVendeurId(vendeurId).stream()
                 .filter(v -> !Boolean.TRUE.equals(v.getAnnulee()))
@@ -1239,21 +1246,28 @@ public class VenteServiceImpl implements VenteService {
 
         if (Math.abs(difference) > 0.01) {
             if (difference > 0) {
-                // Client paye la différence → ENTRÉE caisse
+                // Client paye la différence → ENTRÉE caisse (valable pour comptant ET crédit)
                 caisseService.entreeCaisse(difference,
                         "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
                         request.getUtilisateurId(), "ESPECES", null);
                 log.info("Entrée caisse: +{} F (client paye la différence)", difference);
             } else {
-                // Remboursement client → SORTIE caisse
-                caisseService.sortieCaisse(Math.abs(difference),
-                        "Remboursement modification vente N°" + vente.getNumeroVente() + " - " + motif,
-                        request.getUtilisateurId());
-                log.info("Sortie caisse: -{} F (remboursement client)", Math.abs(difference));
+                // ✅ MODIFICATION ICI : Seulement pour les ventes COMPTANT
+                if (!Boolean.TRUE.equals(vente.getEstCredit())) {
+                    // Vente comptant → remboursement en caisse
+                    caisseService.sortieCaisse(Math.abs(difference),
+                            "Remboursement modification vente N°" + vente.getNumeroVente() + " - " + motif,
+                            request.getUtilisateurId());
+                    log.info("Sortie caisse: -{} F (remboursement client - vente comptant)", Math.abs(difference));
+                } else {
+                    // ✅ Vente à crédit → PAS de remboursement caisse
+                    log.info("Modification crédit - Différence négative: {} F, PAS de remboursement caisse (juste ajustement du montant restant)", 
+                            Math.abs(difference));
+                }
             }
         }
 
-        // 4. Mettre à jour montantVerse si crédit
+        // 4. Mettre à jour montantRestant si crédit
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
             double montantVerse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0;
             vente.setMontantRestant(nouveauTotal - montantVerse);
@@ -1261,6 +1275,7 @@ public class VenteServiceImpl implements VenteService {
                 vente.setCreditRegle(true);
                 vente.setDateReglement(LocalDate.now());
             }
+            log.info("Crédit - Nouveau montant restant: {}", vente.getMontantRestant());
         }
 
         Vente venteSauvee = venteRepository.save(vente);
@@ -1283,7 +1298,7 @@ public class VenteServiceImpl implements VenteService {
                 // Remise directe sur le stock produit
                 int facteur = ligne.getNiveauFacteur() != null ? ligne.getNiveauFacteur() : 1;
                 inventaireService.entreeStock(ligne.getProduit().getId(), ligne.getQuantite() * facteur,
-                        vente.getVendeur().getId(), "Annulation vente N°" + vente.getNumeroVente());
+                        vente.getVendeurId(), "Annulation vente N°" + vente.getNumeroVente());
             } else {
                 // Remise sur le stock du niveau (pas de remballage automatique)
                 niveauRepository.findById(ligne.getNiveauId()).ifPresent(niveau -> {

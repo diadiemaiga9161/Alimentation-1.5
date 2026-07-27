@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -130,6 +131,17 @@ public class FournisseurComptableService {
             inventaireService.entreeStock(produit.getId(), ligneReq.getQuantite(), request.getUtilisateurId(), motifEntree);
             log.info("Stock ajouté (achat): +{} x {} (stock avant: {}, stock après: {})",
                     ligneReq.getQuantite(), produit.getNom(), ancienneQuantite, ancienneQuantite + ligneReq.getQuantite());
+
+            // Produit existant : mise à jour optionnelle du prix de vente (CUMP), déjà calculé et confirmé côté front
+            if (ligneReq.getProduitId() != null
+                    && ligneReq.getNouveauPrixVente() != null
+                    && ligneReq.getNouveauPrixVente() > 0) {
+                double ancienPrixVente = produit.getPrixVente() != null ? produit.getPrixVente() : 0.0;
+                produit.setPrixVente(ligneReq.getNouveauPrixVente());
+                produitRepository.save(produit);
+                log.info("Prix de vente mis à jour (CUMP) pour produit {} : {} -> {}",
+                        produit.getNom(), ancienPrixVente, ligneReq.getNouveauPrixVente());
+            }
         }
 
         achat.setMontantTotal(totalAchat);
@@ -594,7 +606,12 @@ public class FournisseurComptableService {
 
     @Transactional(readOnly = true)
     public FournisseurCompteDto getSituationFournisseur(Long fournisseurId) {
-        log.info("=== Récupération situation fournisseur id={} ===", fournisseurId);
+        return getSituationFournisseur(fournisseurId, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public FournisseurCompteDto getSituationFournisseur(Long fournisseurId, String dateDebutStr, String dateFinStr) {
+        log.info("=== Récupération situation fournisseur id={} (periode: {} -> {}) ===", fournisseurId, dateDebutStr, dateFinStr);
 
         Fournisseur fournisseur = fournisseurRepository.findById(fournisseurId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur introuvable"));
@@ -620,7 +637,20 @@ public class FournisseurComptableService {
         int nombreProduits = (int) produitRepository.countByFournisseurId(fournisseur.getId());
         fournisseurDto.setNombreProduits((long) nombreProduits);
 
-        List<AchatFournisseur> achatsRecents = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
+        boolean periodeFournie = dateDebutStr != null && !dateDebutStr.trim().isEmpty()
+                && dateFinStr != null && !dateFinStr.trim().isEmpty();
+
+        List<AchatFournisseur> achatsRecents;
+        List<PaiementFournisseur> paiementsRecents;
+        if (periodeFournie) {
+            LocalDateTime dateDebut = LocalDate.parse(dateDebutStr).atStartOfDay();
+            LocalDateTime dateFin = LocalDate.parse(dateFinStr).atTime(23, 59, 59);
+            achatsRecents = achatRepository.findByFournisseurIdAndDateAchatBetweenOrderByDateAchatDesc(fournisseurId, dateDebut, dateFin);
+            paiementsRecents = paiementRepository.findByFournisseurIdAndDatePaiementBetweenOrderByDatePaiementDesc(fournisseurId, dateDebut, dateFin);
+        } else {
+            achatsRecents = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
+            paiementsRecents = paiementRepository.findByFournisseurIdOrderByDatePaiementDesc(fournisseurId);
+        }
 
         for (AchatFournisseur achat : achatsRecents) {
             if (achat.getStatut() == StatutAchat.ANNULE) continue;
@@ -647,7 +677,6 @@ public class FournisseurComptableService {
             achatsSansFournisseur.add(achatCopy);
         }
 
-        List<PaiementFournisseur> paiementsRecents = paiementRepository.findByFournisseurIdOrderByDatePaiementDesc(fournisseurId);
         List<PaiementFournisseur> paiementsSansFournisseur = new ArrayList<>();
         for (PaiementFournisseur paiement : paiementsRecents) {
             PaiementFournisseur paiementCopy = new PaiementFournisseur();
@@ -674,7 +703,19 @@ public class FournisseurComptableService {
     }
 
     public List<AchatFournisseur> getHistoriqueAchats(Long fournisseurId) {
-        List<AchatFournisseur> achats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
+        return getHistoriqueAchats(fournisseurId, null, null);
+    }
+
+    public List<AchatFournisseur> getHistoriqueAchats(Long fournisseurId, String dateDebutStr, String dateFinStr) {
+        List<AchatFournisseur> achats;
+        if (dateDebutStr != null && !dateDebutStr.trim().isEmpty()
+                && dateFinStr != null && !dateFinStr.trim().isEmpty()) {
+            LocalDateTime dateDebut = LocalDate.parse(dateDebutStr).atStartOfDay();
+            LocalDateTime dateFin = LocalDate.parse(dateFinStr).atTime(23, 59, 59);
+            achats = achatRepository.findByFournisseurIdAndDateAchatBetweenOrderByDateAchatDesc(fournisseurId, dateDebut, dateFin);
+        } else {
+            achats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseurId);
+        }
         for (AchatFournisseur achat : achats) {
             if (achat.getStatut() == StatutAchat.ANNULE) continue;
             double restantCalcule = achat.getMontantTotal() - achat.getMontantPaye();
@@ -687,6 +728,98 @@ public class FournisseurComptableService {
     }
 
     public List<PaiementFournisseur> getHistoriquePaiements(Long fournisseurId) {
+        return getHistoriquePaiements(fournisseurId, null, null);
+    }
+
+    public List<PaiementFournisseur> getHistoriquePaiements(Long fournisseurId, String dateDebutStr, String dateFinStr) {
+        if (dateDebutStr != null && !dateDebutStr.trim().isEmpty()
+                && dateFinStr != null && !dateFinStr.trim().isEmpty()) {
+            LocalDateTime dateDebut = LocalDate.parse(dateDebutStr).atStartOfDay();
+            LocalDateTime dateFin = LocalDate.parse(dateFinStr).atTime(23, 59, 59);
+            return paiementRepository.findByFournisseurIdAndDatePaiementBetweenOrderByDatePaiementDesc(fournisseurId, dateDebut, dateFin);
+        }
         return paiementRepository.findByFournisseurIdOrderByDatePaiementDesc(fournisseurId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AchatFournisseur> getAchatsNonPayes(Long fournisseurId) {
+        List<AchatFournisseur> achats = achatRepository.findAchatsNonPayesByFournisseurId(fournisseurId, StatutAchat.EN_COURS);
+        for (AchatFournisseur achat : achats) {
+            double restantCalcule = achat.getMontantTotal() - achat.getMontantPaye();
+            achat.setMontantRestant(restantCalcule);
+        }
+        return achats;
+    }
+
+    // ============================================
+    // MÉTHODE 4 : ANNULER UN PAIEMENT FOURNISSEUR
+    // ============================================
+    @Transactional
+    public PaiementFournisseur annulerPaiementFournisseur(Long paiementId, Long utilisateurId) {
+        PaiementFournisseur paiement = paiementRepository.findById(paiementId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Paiement introuvable: " + paiementId));
+
+        if (paiement.isAnnule()) {
+            throw new IllegalStateException("Ce paiement est déjà annulé");
+        }
+
+        Fournisseur fournisseur = paiement.getFournisseur();
+
+        // Remboursement selon le mode de paiement
+        if (paiement.getModePaiement() == ModePaiementFournisseur.ESPECES) {
+            caisseService.entreeCaisse(
+                    paiement.getMontant(),
+                    "Annulation paiement fournisseur " + fournisseur.getNom() + " #" + paiementId,
+                    utilisateurId,
+                    "ESPECES",
+                    "Annulation paiement #" + paiementId
+            );
+        } else if (paiement.getModePaiement() == ModePaiementFournisseur.BANQUE && paiement.getCompteId() != null) {
+            compteService.crediterCompte(
+                    paiement.getCompteId(),
+                    paiement.getMontant(),
+                    "Annulation paiement fournisseur " + fournisseur.getNom() + " #" + paiementId,
+                    TypeOperationCompte.REMBOURSEMENT_ACHAT.toString(),
+                    utilisateurId
+            );
+        }
+
+        // Rétablir la dette fournisseur
+        fournisseur.setTotalPaye(Math.max(0.0, fournisseur.getTotalPaye() - paiement.getMontant()));
+        fournisseur.setSolde(fournisseur.getSolde() + paiement.getMontant());
+        fournisseurRepository.save(fournisseur);
+
+        // Remettre les achats liés en statut non-payé
+        List<AchatPaiementLien> liens = achatPaiementLienRepository.findByPaiementId(paiementId);
+        for (AchatPaiementLien lien : liens) {
+            achatRepository.findById(lien.getAchatId()).ifPresent(achat -> {
+                if (achat.getStatut() != StatutAchat.ANNULE) {
+                    double nouveauPaye = Math.max(0.0, achat.getMontantPaye() - lien.getMontantApplique());
+                    achat.setMontantPaye(nouveauPaye);
+                    achat.setMontantRestant(achat.getMontantTotal() - nouveauPaye);
+                    achat.setStatut(achat.getMontantRestant() > 0.01 ? StatutAchat.EN_COURS : StatutAchat.PAYE);
+                    achatRepository.save(achat);
+                }
+            });
+        }
+
+        paiement.setAnnule(true);
+        paiement.setDateAnnulation(LocalDateTime.now());
+        paiement.setMotifAnnulation("Annulé par utilisateur " + utilisateurId);
+        log.info("Paiement fournisseur #{} annulé par utilisateur {}", paiementId, utilisateurId);
+        return paiementRepository.save(paiement);
+    }
+
+    // ============================================
+    // MÉTHODE 5 : PAIEMENTS PAR PÉRIODE
+    // ============================================
+    @Transactional(readOnly = true)
+    public List<PaiementFournisseur> getPaiementsParPeriode(String dateDebutStr, String dateFinStr) {
+        if (dateDebutStr != null && dateFinStr != null) {
+            LocalDateTime dateDebut = LocalDate.parse(dateDebutStr).atStartOfDay();
+            LocalDateTime dateFin = LocalDate.parse(dateFinStr).atTime(23, 59, 59);
+            return paiementRepository.findByPeriode(dateDebut, dateFin);
+        }
+        return paiementRepository.findAllByOrderByDatePaiementDesc();
     }
 }

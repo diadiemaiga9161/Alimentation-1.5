@@ -35,4 +35,6 @@ public class VenteDto {
     private String motifAnnulation;
     private LocalDateTime dateAnnulation;
     private Boolean estRetourne;
+    private Boolean retourPartiel;
+    private Double montantRetourne;
 }

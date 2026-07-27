@@ -177,6 +177,14 @@ public class VenteController {
         return ResponseEntity.ok(venteMapper.toVenteMapList(credits));
     }
 
+    @GetMapping("/credits/by-client/{clientId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @Operation(summary = "Obtenir les crédits d'un client par son id (situation client)")
+    public ResponseEntity<List<Map<String, Object>>> obtenirCreditsParClientId(@PathVariable Long clientId) {
+        List<Vente> credits = venteService.obtenirCreditsParClientId(clientId);
+        return ResponseEntity.ok(venteMapper.toVenteMapList(credits));
+    }
+
     @GetMapping("/vendeur/{vendeurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir les ventes par vendeur")

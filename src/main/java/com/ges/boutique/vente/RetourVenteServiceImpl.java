@@ -109,12 +109,35 @@ public class RetourVenteServiceImpl {
             vente.setMontantAvanceUtilise(Math.max(0, montantAvanceUtilise - montantAvanceRetourne));
         }
 
-        if (montantCaisseRetourne > 0) {
-            // CORRECTION: Appel à la bonne méthode pour remboursement retour
+        if (Boolean.TRUE.equals(vente.getEstCredit())) {
+            // Vente à crédit : la part du retour non couverte par une avance n'a
+            // jamais été encaissée (le client n'a pas encore payé) -> on réduit
+            // simplement le solde restant à payer, la caisse n'est pas touchée.
+            double montantRetourneCumule = (vente.getMontantRetourne() != null ? vente.getMontantRetourne() : 0.0) + montantCaisseRetourne;
+            vente.setMontantRetourne(montantRetourneCumule);
+        } else if (montantCaisseRetourne > 0) {
+            // Vente comptant : la somme avait bien été encaissée à la vente, elle est remboursée depuis la caisse.
             caisseService.sortieCaisseRemboursementRetour(montantCaisseRetourne, motifRemboursement, request.getUtilisateurId());
         }
 
+        // Un retour peut ne concerner qu'une partie des produits de la vente
+        // (ex: 3 articles vendus, 1 seul retourné). On ne marque la vente comme
+        // "Retourné" (totalement) que si TOUTE la quantité vendue a été rendue ;
+        // sinon c'est un retour partiel, affiché différemment côté UI.
+        int quantiteVendueTotale = vente.getLignes() == null ? 0 :
+                vente.getLignes().stream().mapToInt(l -> l.getQuantite() != null ? l.getQuantite() : 0).sum();
+
+        int quantiteDejaRetournee = retourVenteRepository.findByVenteIdOrderByDateRetourDesc(vente.getId()).stream()
+                .flatMap(r -> r.getLignes().stream())
+                .mapToInt(l -> l.getQuantiteRetournee() != null ? l.getQuantiteRetournee() : 0)
+                .sum();
+        int quantiteRetourneeCetteFois = lignes.stream()
+                .mapToInt(l -> l.getQuantiteRetournee() != null ? l.getQuantiteRetournee() : 0)
+                .sum();
+        int quantiteRetourneeTotale = quantiteDejaRetournee + quantiteRetourneeCetteFois;
+
         vente.setEstRetourne(true);
+        vente.setRetourPartiel(quantiteVendueTotale > 0 && quantiteRetourneeTotale < quantiteVendueTotale);
         venteRepository.save(vente);
 
         RetourVente saved = retourVenteRepository.save(retour);

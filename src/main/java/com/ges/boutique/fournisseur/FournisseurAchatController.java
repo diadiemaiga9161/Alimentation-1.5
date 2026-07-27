@@ -115,18 +115,70 @@ public class FournisseurAchatController {
 
     @GetMapping("/situation/{fournisseurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK', 'CAISSE')")
-    @Operation(summary = "Obtenir la situation comptable d'un fournisseur (total achats, payé, solde, historiques)")
-    public ResponseEntity<FournisseurCompteDto> getSituationFournisseur(@PathVariable Long fournisseurId) {
-        FournisseurCompteDto situation = fournisseurComptableService.getSituationFournisseur(fournisseurId);
+    @Operation(summary = "Obtenir la situation comptable d'un fournisseur (total achats, payé, solde, historiques). " +
+            "Filtre optionnel par période (dateDebut/dateFin au format yyyy-MM-dd) appliqué uniquement aux listes achatsRecents/paiementsRecents, pas aux totaux.")
+    public ResponseEntity<FournisseurCompteDto> getSituationFournisseur(
+            @PathVariable Long fournisseurId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        FournisseurCompteDto situation = fournisseurComptableService.getSituationFournisseur(fournisseurId, dateDebut, dateFin);
         return ResponseEntity.ok(situation);
     }
 
     @GetMapping("/achats/{fournisseurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
     @Transactional(readOnly = true)
-    @Operation(summary = "Historique des achats d'un fournisseur avec lignes produits")
-    public ResponseEntity<Map<String, Object>> getHistoriqueAchats(@PathVariable Long fournisseurId) {
-        List<AchatFournisseur> achats = fournisseurComptableService.getHistoriqueAchats(fournisseurId);
+    @Operation(summary = "Historique des achats d'un fournisseur avec lignes produits. Filtre optionnel par période (dateDebut/dateFin au format yyyy-MM-dd)")
+    public ResponseEntity<Map<String, Object>> getHistoriqueAchats(
+            @PathVariable Long fournisseurId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        List<AchatFournisseur> achats = fournisseurComptableService.getHistoriqueAchats(fournisseurId, dateDebut, dateFin);
+
+        List<Map<String, Object>> achatsData = achats.stream()
+                .map(achat -> {
+                    Map<String, Object> achatMap = new HashMap<>();
+                    achatMap.put("id", achat.getId());
+                    achatMap.put("dateAchat", achat.getDateAchat());
+                    achatMap.put("montantTotal", achat.getMontantTotal());
+                    achatMap.put("montantPaye", achat.getMontantPaye());
+                    achatMap.put("montantRestant", achat.getMontantRestant());
+                    achatMap.put("statut", achat.getStatut().toString());
+                    achatMap.put("commentaire", achat.getCommentaire());
+
+                    List<Map<String, Object>> lignesData = achat.getLignes().stream()
+                            .map(ligne -> {
+                                Map<String, Object> ligneMap = new HashMap<>();
+                                ligneMap.put("quantite", ligne.getQuantite());
+                                ligneMap.put("prixAchatUnitaire", ligne.getPrixAchatUnitaire());
+                                ligneMap.put("sousTotal", ligne.getSousTotal());
+                                if (ligne.getProduit() != null) {
+                                    Map<String, Object> p = new HashMap<>();
+                                    p.put("id", ligne.getProduit().getId());
+                                    p.put("nom", ligne.getProduit().getNom());
+                                    ligneMap.put("produit", p);
+                                }
+                                return ligneMap;
+                            })
+                            .collect(Collectors.toList());
+                    achatMap.put("lignes", lignesData);
+
+                    return achatMap;
+                })
+                .collect(Collectors.toList());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("achats", achatsData);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/achats-non-payes/{fournisseurId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STOCK')")
+    @Transactional(readOnly = true)
+    @Operation(summary = "Liste des achats non payés (statut EN_COURS) d'un fournisseur avec lignes produits")
+    public ResponseEntity<Map<String, Object>> getAchatsNonPayes(@PathVariable Long fournisseurId) {
+        List<AchatFournisseur> achats = fournisseurComptableService.getAchatsNonPayes(fournisseurId);
 
         List<Map<String, Object>> achatsData = achats.stream()
                 .map(achat -> {
@@ -168,9 +220,12 @@ public class FournisseurAchatController {
 
     @GetMapping("/paiements/{fournisseurId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'CAISSE')")
-    @Operation(summary = "Historique des paiements effectués à un fournisseur")
-    public ResponseEntity<Map<String, Object>> getHistoriquePaiements(@PathVariable Long fournisseurId) {
-        List<PaiementFournisseur> paiements = fournisseurComptableService.getHistoriquePaiements(fournisseurId);
+    @Operation(summary = "Historique des paiements effectués à un fournisseur. Filtre optionnel par période (dateDebut/dateFin au format yyyy-MM-dd)")
+    public ResponseEntity<Map<String, Object>> getHistoriquePaiements(
+            @PathVariable Long fournisseurId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        List<PaiementFournisseur> paiements = fournisseurComptableService.getHistoriquePaiements(fournisseurId, dateDebut, dateFin);
 
         // Construire une réponse simplifiée
         List<Map<String, Object>> paiementsData = paiements.stream()
@@ -250,6 +305,24 @@ public class FournisseurAchatController {
         response.put("achatId", achat.getId());
         response.put("statut", achat.getStatut().toString());
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/paiements")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @Operation(summary = "Lister tous les paiements fournisseur (optionnel: filtré par période)")
+    public ResponseEntity<?> getPaiementsParPeriode(
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        return ResponseEntity.ok(fournisseurComptableService.getPaiementsParPeriode(dateDebut, dateFin));
+    }
+
+    @PostMapping("/paiement/{paiementId}/annuler")
+    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @Operation(summary = "Annuler un paiement fournisseur (restitue le montant en caisse ou sur le compte)")
+    public ResponseEntity<?> annulerPaiement(
+            @PathVariable Long paiementId,
+            @RequestParam Long utilisateurId) {
+        return ResponseEntity.ok(fournisseurComptableService.annulerPaiementFournisseur(paiementId, utilisateurId));
     }
 
     @GetMapping("/produits-simples")

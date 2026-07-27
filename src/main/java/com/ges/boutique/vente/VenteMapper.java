@@ -42,6 +42,8 @@ public class VenteMapper {
         dto.setMotifAnnulation(vente.getMotifAnnulation());
         dto.setDateAnnulation(vente.getDateAnnulation());
         dto.setEstRetourne(vente.getEstRetourne());
+        dto.setRetourPartiel(vente.getRetourPartiel());
+        dto.setMontantRetourne(vente.getMontantRetourne());
 
         if (vente.getLignes() != null) {
             dto.setLignes(vente.getLignes().stream()
@@ -104,6 +106,8 @@ public class VenteMapper {
         map.put("motifAnnulation", vente.getMotifAnnulation());
         map.put("dateAnnulation", vente.getDateAnnulation());
         map.put("estRetourne", vente.getEstRetourne());
+        map.put("retourPartiel", vente.getRetourPartiel());
+        map.put("montantRetourne", vente.getMontantRetourne());
 
         map.put("nombreProduits", vente.getLignes() != null ? vente.getLignes().size() : 0);
 

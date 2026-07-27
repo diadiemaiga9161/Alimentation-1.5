@@ -203,7 +203,9 @@ public class AnalyseIAService {
                 segments.merge(segment, 1, Integer::sum);
             }
         } catch (Exception e) {
-            log.warn("Erreur lors de la segmentation RFM: {}", e.getMessage());
+            // Stacktrace complète conservée (pas seulement le message) pour pouvoir
+            // diagnostiquer une régression future sans avoir à retirer ce try/catch.
+            log.warn("Erreur lors de la segmentation RFM (segments retournés vides): {}", e.getMessage(), e);
         }
 
         return segments;
@@ -607,15 +609,19 @@ public class AnalyseIAService {
         prevision30j = prevision30j * 0.70 + emaValue * 30 * 0.30;
 
         // 3. Segmentation RFM
+        log.debug("Analyse IA - étape 3/6: segmentation RFM");
         Map<String, Integer> segments = segmenterClients();
 
         // 4. Score santé global
+        log.debug("Analyse IA - étape 4/6: score santé global");
         int scoreGlobal = calculerScoreGlobal(valeurs60j, coeffs);
 
         // 5. Recommandations personnalisées
+        log.debug("Analyse IA - étape 5/6: recommandations");
         List<RecommandationIA> recommandations = genererRecommandations(profil, valeurs60j, coeffs, segments);
 
         // 6. Alertes
+        log.debug("Analyse IA - étape 6/6: alertes");
         List<AlerteIA> alertes = genererAlertes();
 
         // 7. Prévision détaillée 30 jours suivants

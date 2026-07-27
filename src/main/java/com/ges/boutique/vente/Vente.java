@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
@@ -31,12 +33,21 @@ public class Vente {
     @Column(nullable = false, unique = true)
     private String numeroVente;
 
+    // @NotFound(IGNORE) : certaines ventes historiques peuvent référencer un
+    // vendeur ou un client qui n'existe plus en base (données orphelines
+    // accumulées sur les boutiques les plus anciennes). Sans cette annotation,
+    // Hibernate lève une EntityNotFoundException dès le chargement EAGER de la
+    // Vente (ex: findAllCredits(), findCreditsEnRetard() dans le module IA),
+    // ce qui fait planter TOUTE requête chargeant cette vente. Avec l'annotation,
+    // Hibernate renvoie simplement null pour l'association manquante.
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "vendeur_id", nullable = false)
+    @NotFound(action = NotFoundAction.IGNORE)
     private Utilisateur vendeur;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "client_id")
+    @NotFound(action = NotFoundAction.IGNORE)
     private Client client;
 
     @OneToMany(mappedBy = "vente", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
@@ -99,6 +110,12 @@ public class Vente {
     @Column(name = "montant_restant")
     private Double montantRestant = 0.0;
 
+    /** Cumul des montants retournés (retours d'articles) sur cette vente à crédit.
+     *  Déduit du montant restant à payer, sans jamais toucher la caisse : pour une
+     *  vente à crédit, l'argent des articles retournés n'a jamais été encaissé. */
+    @Column(name = "montant_retourne")
+    private Double montantRetourne = 0.0;
+
     @Column(name = "date_reglement")
     private LocalDate dateReglement;
 
@@ -110,6 +127,11 @@ public class Vente {
 
     @Column(name = "est_retourne")
     private Boolean estRetourne = false;
+
+    /** true si seulement une partie des articles vendus a été retournée (le reste
+     *  de la vente reste actif), false si tous les articles ont été retournés. */
+    @Column(name = "retour_partiel")
+    private Boolean retourPartiel = false;
 
     @Column(name = "motif_annulation")
     private String motifAnnulation;
@@ -123,6 +145,7 @@ public class Vente {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "regle_par_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "ventes", "boutique"})
+    @NotFound(action = NotFoundAction.IGNORE)
     private Utilisateur reglePar;
 
     @Column(name = "regle_par_nom")
@@ -141,7 +164,7 @@ public class Vente {
             calculerTotal();
         }
         if (Boolean.TRUE.equals(estCredit)) {
-            montantRestant = montantApresRemise - montantVerse;
+            montantRestant = montantApresRemise - montantRetourneOuZero() - montantVerse;
         }
     }
 
@@ -151,12 +174,16 @@ public class Vente {
             calculerTotal();
         }
         if (Boolean.TRUE.equals(estCredit)) {
-            montantRestant = montantApresRemise - montantVerse;
+            montantRestant = montantApresRemise - montantRetourneOuZero() - montantVerse;
             if (montantRestant <= 0) {
                 creditRegle = true;
                 dateReglement = LocalDate.now();
             }
         }
+    }
+
+    private double montantRetourneOuZero() {
+        return montantRetourne != null ? montantRetourne : 0.0;
     }
 
     public void ajouterLigne(LigneVente ligne) {
@@ -227,7 +254,7 @@ public class Vente {
                 .doubleValue();
 
         if (Boolean.TRUE.equals(estCredit)) {
-            montantRestant = montantApresRemise - montantVerse;
+            montantRestant = montantApresRemise - montantRetourneOuZero() - montantVerse;
             if (montantRestant <= 0) {
                 creditRegle = true;
                 dateReglement = LocalDate.now();
@@ -260,7 +287,7 @@ public class Vente {
                 throw new IllegalArgumentException("Le montant réglé ne peut pas dépasser le montant restant");
             }
             this.montantVerse = (this.montantVerse != null ? this.montantVerse : 0) + montant;
-            this.montantRestant = montantApresRemise - this.montantVerse;
+            this.montantRestant = montantApresRemise - montantRetourneOuZero() - this.montantVerse;
             if (this.montantRestant <= 0) {
                 this.creditRegle = true;
                 this.dateReglement = dateReglement;
