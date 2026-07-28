@@ -68,6 +68,18 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     // Trouver une opération par venteCreditId et type (ex : VENTE_CREDIT pour une vente donnée)
     Optional<OperationCaisse> findByVenteCreditIdAndType(Long venteCreditId, TypeOperationCaisse type);
 
+    /**
+     * Tous les règlements (versements) actifs pour une liste de ventes à crédit — utilisé par le
+     * relevé client (situation client) pour construire l'historique chronologique en une seule
+     * requête batch (évite le pattern N+1 de l'ancien flux forkJoin côté front).
+     * Filtre explicitement le type REGLEMENT_CREDIT : une même venteCreditId est aussi portée par
+     * l'opération VENTE_CREDIT initiale (montant = total du crédit), qu'il ne faut surtout pas
+     * confondre avec un versement sous peine de fausser le calcul du reliquat.
+     */
+    @Query("SELECT o FROM OperationCaisse o WHERE o.venteCreditId IN :venteCreditIds " +
+           "AND o.type = 'REGLEMENT_CREDIT' AND o.annule = false ORDER BY o.dateOperation ASC")
+    List<OperationCaisse> findReglementsByVenteCreditIdIn(@Param("venteCreditIds") List<Long> venteCreditIds);
+
     // ==================== PARAMETRES — NETTOYAGE ====================
 
     /**

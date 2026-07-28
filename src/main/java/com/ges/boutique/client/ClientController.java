@@ -2,6 +2,8 @@ package com.ges.boutique.client;
 
 import com.ges.boutique.email.QrCodeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -10,11 +12,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Value;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/clients")
 @RequiredArgsConstructor
@@ -23,6 +27,7 @@ public class ClientController {
 
     private final ClientService clientService;
     private final ClientReleveService clientReleveService;
+    private final ClientReleveApiService clientReleveApiService;
     private final QrCodeService qrCodeService;
 
     @Value("${app.base-url:http://localhost:8080}")
@@ -163,6 +168,32 @@ public class ClientController {
             return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * Relevé client / situation client — JSON paginé, historique chronologique complet
+     * (ventes + versements + retours) avec reliquat cumulé calculé côté serveur.
+     * Socle unique consommé par Angular, Ionic et React Native.
+     */
+    @GetMapping("/{id}/releve")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<Map<String, Object>> obtenirReleve(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateDebut,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFin,
+            @RequestParam(required = false) String type) {
+        try {
+            Map<String, Object> releve = clientReleveApiService.genererReleve(id, page, size, dateDebut, dateFin, type);
+            return ResponseEntity.ok(releve);
+        } catch (Exception e) {
+            log.error("Erreur génération relevé JSON client {}: {}", id, e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Client introuvable ou erreur lors du calcul du relevé");
+            return ResponseEntity.status(404).body(response);
         }
     }
 

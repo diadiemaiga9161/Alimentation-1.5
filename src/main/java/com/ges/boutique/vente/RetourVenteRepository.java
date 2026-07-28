@@ -13,6 +13,9 @@ public interface RetourVenteRepository extends JpaRepository<RetourVente, Long> 
     List<RetourVente> findByVenteIdOrderByDateRetourDesc(Long venteId);
     List<RetourVente> findAllByOrderByDateRetourDesc();
 
+    // Variante batch (liste de ventes) — utilisée par le relevé client pour éviter le N+1.
+    List<RetourVente> findByVenteIdIn(List<Long> venteIds);
+
     // ==================== PARAMETRES — SUPPRESSION EN BLOC ====================
 
     /**
