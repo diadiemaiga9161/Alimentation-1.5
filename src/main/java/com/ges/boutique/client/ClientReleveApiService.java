@@ -331,6 +331,8 @@ public class ClientReleveApiService {
     }
 
     private Double arrondir(double valeur) {
-        return Math.round(valeur * 100.0) / 100.0;
+        return java.math.BigDecimal.valueOf(valeur)
+                .setScale(2, java.math.RoundingMode.HALF_UP)
+                .doubleValue();
     }
 }
