@@ -243,6 +243,21 @@ public class Vente {
         montantTotal = montantApresRemise;
         beneficeTotal = totalBeneficeLignes - reductionGlobale;
 
+        // Le chiffre d'affaires et le bénéfice affichés/utilisés dans les rapports ne
+        // doivent jamais compter des articles déjà retournés (montantRetourne, cumulé par
+        // RetourVenteServiceImpl à chaque retour, comptant ou crédit). La déduction est
+        // proportionnelle au poids du retour dans le montant après remise. On ne touche
+        // volontairement PAS montantApresRemise, qui reste la base du calcul du montant
+        // restant à payer (crédit) plus bas — logique crédit/avance inchangée.
+        double montantDejaRetourne = montantRetourneOuZero();
+        if (montantDejaRetourne > 0) {
+            double proportionRetournee = montantApresRemise > 0
+                    ? Math.min(1.0, montantDejaRetourne / montantApresRemise)
+                    : 1.0;
+            beneficeTotal = beneficeTotal * (1 - proportionRetournee);
+            montantTotal = Math.max(0, montantTotal - montantDejaRetourne);
+        }
+
         montantTotal = BigDecimal.valueOf(montantTotal)
                 .setScale(2, RoundingMode.HALF_UP)
                 .doubleValue();

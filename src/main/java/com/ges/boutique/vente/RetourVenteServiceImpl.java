@@ -109,12 +109,17 @@ public class RetourVenteServiceImpl {
             vente.setMontantAvanceUtilise(Math.max(0, montantAvanceUtilise - montantAvanceRetourne));
         }
 
+        // Cumul du montant retourné, pour TOUTE vente (comptant ou crédit) : lu par
+        // Vente.calculerTotal() pour exclure les articles retournés du chiffre d'affaires
+        // et du bénéfice utilisés dans les rapports (montantTotal/beneficeTotal). Ne sert
+        // qu'à ça pour une vente comptant — la logique crédit ci-dessous est inchangée.
+        double montantRetourneCumule = (vente.getMontantRetourne() != null ? vente.getMontantRetourne() : 0.0) + montantCaisseRetourne;
+        vente.setMontantRetourne(montantRetourneCumule);
+
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
             // Vente à crédit : la part du retour non couverte par une avance n'a
             // jamais été encaissée (le client n'a pas encore payé) -> on réduit
             // simplement le solde restant à payer, la caisse n'est pas touchée.
-            double montantRetourneCumule = (vente.getMontantRetourne() != null ? vente.getMontantRetourne() : 0.0) + montantCaisseRetourne;
-            vente.setMontantRetourne(montantRetourneCumule);
             // montantRestant/creditRegle sont recalculés automatiquement (dans les deux sens)
             // par le hook @PreUpdate de Vente au moment du save ci-dessous — pas besoin de les
             // recalculer ici (voir Vente.onUpdate()).
