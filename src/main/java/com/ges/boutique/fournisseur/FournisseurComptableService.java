@@ -522,10 +522,12 @@ public class FournisseurComptableService {
 
         double montantNonPaye = achat.getMontantRestant() != null ? achat.getMontantRestant() : 0.0;
         if (fournisseur != null) {
+            double montantPayeAchat = achat.getMontantPaye() != null ? achat.getMontantPaye() : 0.0;
             fournisseur.setTotalAchats(Math.max(0, fournisseur.getTotalAchats() - achat.getMontantTotal()));
             fournisseur.setSolde(Math.max(0, fournisseur.getSolde() - montantNonPaye));
+            fournisseur.setTotalPaye(Math.max(0, fournisseur.getTotalPaye() - montantPayeAchat));
             fournisseurRepository.save(fournisseur);
-            log.info("Fournisseur ajusté: totalAchats={}, solde={}", fournisseur.getTotalAchats(), fournisseur.getSolde());
+            log.info("Fournisseur ajusté: totalAchats={}, solde={}, totalPaye={}", fournisseur.getTotalAchats(), fournisseur.getSolde(), fournisseur.getTotalPaye());
         }
 
         achat.setStatut(StatutAchat.ANNULE);
