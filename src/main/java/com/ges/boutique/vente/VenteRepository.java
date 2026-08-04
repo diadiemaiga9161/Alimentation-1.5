@@ -59,13 +59,17 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findAllNonAnnulees();
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    // Principe de constatation : une vente à crédit compte à 100% de son montantTotal
+    // dans le CA à la date de la vente (le paiement effectif est un sujet caisse séparé,
+    // cf. CaisseServiceImpl) — cohérent avec obtenirStatistiquesJournalieres et
+    // RapportAnalytiqueController.ca30Jours() (Problème #2 de l'audit comptable).
+    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireJournalier(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireHebdomadaire(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireMensuel(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
     @Query("SELECT COALESCE(SUM(v.montantRestant), 0) FROM Vente v WHERE v.estCredit = true AND (v.creditRegle IS NULL OR v.creditRegle = false) AND (v.annulee IS NULL OR v.annulee = false)")

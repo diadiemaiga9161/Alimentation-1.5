@@ -134,9 +134,11 @@ public class RapportAnalytiqueController {
     /**
      * GET /api/rapports/ventes-par-vendeur?dateDebut=&dateFin=
      * Historique des ventes par vendeur, groupé par jour, séparé comptant / crédit.
-     * Une vente à crédit ne compte dans le CA que pour le montant réellement versé
-     * (une vente à crédit sans aucun versement ne contribue pas au CA, mais compte
-     * quand même dans le nombre de ventes).
+     * Principe de constatation : une vente à crédit compte à 100% de son montantTotal
+     * dans le CA à la date de la vente, qu'elle soit payée ou non — cohérent avec
+     * getChiffreAffaireJournalier/Hebdomadaire/Mensuel et obtenirStatistiquesJournalieres
+     * (Problème #2 de l'audit comptable). caComptant/caCredit distinguent uniquement le
+     * mode de paiement, pas ce qui est réellement encaissé (voir la caisse pour ça).
      */
     @GetMapping("/ventes-par-vendeur")
     public ResponseEntity<List<Map<String, Object>>> ventesParVendeur(
@@ -176,11 +178,10 @@ public class RapportAnalytiqueController {
 
             boolean estCredit = Boolean.TRUE.equals(v.getEstCredit());
             double montantTotal = v.getMontantTotal() != null ? v.getMontantTotal() : 0.0;
-            double montantVerse = v.getMontantVerse() != null ? v.getMontantVerse() : 0.0;
 
             if (estCredit) {
                 ligne.put("nbVentesCredit", (Long) ligne.get("nbVentesCredit") + 1);
-                ligne.put("caCredit", (Double) ligne.get("caCredit") + montantVerse);
+                ligne.put("caCredit", (Double) ligne.get("caCredit") + montantTotal);
             } else {
                 ligne.put("nbVentesComptant", (Long) ligne.get("nbVentesComptant") + 1);
                 ligne.put("caComptant", (Double) ligne.get("caComptant") + montantTotal);
