@@ -40,8 +40,16 @@ public class IAChatController {
             Map.of("id", "credits_dus", "label", "Clients avec des dettes", "icone", "people-outline"),
             Map.of("id", "stock_faible", "label", "Produits en rupture de stock", "icone", "warning-outline"),
             Map.of("id", "conseils", "label", "Donne-moi des conseils", "icone", "bulb-outline"),
+            Map.of("id", "augmenter_benefices", "label", "Augmenter mes bénéfices", "icone", "rocket-outline"),
+            Map.of("id", "produits_rentables", "label", "Produits les plus rentables", "icone", "ribbon-outline"),
             Map.of("id", "bilan_semaine", "label", "Bilan de la semaine", "icone", "calendar-outline"),
-            Map.of("id", "bilan_mois", "label", "Bilan du mois", "icone", "trending-up-outline")
+            Map.of("id", "bilan_mois", "label", "Bilan du mois", "icone", "trending-up-outline"),
+            Map.of("id", "sorties_stock", "label", "Sorties de stock du mois", "icone", "arrow-up-circle-outline"),
+            Map.of("id", "ventes_annulees", "label", "Ventes annulées du mois", "icone", "close-circle-outline"),
+            Map.of("id", "stock_produits", "label", "État de mon stock", "icone", "cube-outline"),
+            Map.of("id", "rapport_complet", "label", "Rapport complet", "icone", "document-text-outline"),
+            Map.of("id", "comment_ca_marche", "label", "Comment fonctionne Ges Boutique ?", "icone", "help-circle-outline"),
+            Map.of("id", "ventes_vendeur", "label", "Qui a fait les ventes ?", "icone", "person-outline")
         );
         return ResponseEntity.ok(questions);
     }

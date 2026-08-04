@@ -62,6 +62,9 @@ public class MouvementStock {
     @Column(name = "niveau_nom")
     private String niveauNom;
 
+    @Column(name = "type_sortie")
+    private String typeSortie;
+
     @PrePersist
     protected void onCreate() {
         if (dateMouvement == null) dateMouvement = LocalDateTime.now();

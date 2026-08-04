@@ -175,10 +175,13 @@ public class Vente {
         }
         if (Boolean.TRUE.equals(estCredit)) {
             montantRestant = montantApresRemise - montantRetourneOuZero() - montantVerse;
-            if (montantRestant <= 0) {
-                creditRegle = true;
+            boolean regle = montantRestant <= 0;
+            if (regle && !Boolean.TRUE.equals(creditRegle)) {
                 dateReglement = LocalDate.now();
+            } else if (!regle) {
+                dateReglement = null;
             }
+            creditRegle = regle;
         }
     }
 
@@ -255,10 +258,13 @@ public class Vente {
 
         if (Boolean.TRUE.equals(estCredit)) {
             montantRestant = montantApresRemise - montantRetourneOuZero() - montantVerse;
-            if (montantRestant <= 0) {
-                creditRegle = true;
+            boolean regle = montantRestant <= 0;
+            if (regle && !Boolean.TRUE.equals(creditRegle)) {
                 dateReglement = LocalDate.now();
+            } else if (!regle) {
+                dateReglement = null;
             }
+            creditRegle = regle;
         }
     }
 
@@ -288,7 +294,7 @@ public class Vente {
             }
             this.montantVerse = (this.montantVerse != null ? this.montantVerse : 0) + montant;
             this.montantRestant = montantApresRemise - montantRetourneOuZero() - this.montantVerse;
-            if (this.montantRestant <= 0) {
+            if (this.montantRestant <= 0 && !Boolean.TRUE.equals(this.creditRegle)) {
                 this.creditRegle = true;
                 this.dateReglement = dateReglement;
             }

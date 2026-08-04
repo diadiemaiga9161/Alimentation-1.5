@@ -132,15 +132,15 @@ public class FournisseurComptableService {
             log.info("Stock ajouté (achat): +{} x {} (stock avant: {}, stock après: {})",
                     ligneReq.getQuantite(), produit.getNom(), ancienneQuantite, ancienneQuantite + ligneReq.getQuantite());
 
-            // Produit existant : mise à jour optionnelle du prix de vente (CUMP), déjà calculé et confirmé côté front
+            // Produit existant : mise à jour optionnelle du prix d'achat (CUMP), déjà calculé et confirmé côté front
             if (ligneReq.getProduitId() != null
-                    && ligneReq.getNouveauPrixVente() != null
-                    && ligneReq.getNouveauPrixVente() > 0) {
-                double ancienPrixVente = produit.getPrixVente() != null ? produit.getPrixVente() : 0.0;
-                produit.setPrixVente(ligneReq.getNouveauPrixVente());
+                    && ligneReq.getNouveauPrixAchat() != null
+                    && ligneReq.getNouveauPrixAchat() > 0) {
+                double ancienPrixAchat = produit.getPrixAchat() != null ? produit.getPrixAchat() : 0.0;
+                produit.setPrixAchat(ligneReq.getNouveauPrixAchat());
                 produitRepository.save(produit);
-                log.info("Prix de vente mis à jour (CUMP) pour produit {} : {} -> {}",
-                        produit.getNom(), ancienPrixVente, ligneReq.getNouveauPrixVente());
+                log.info("Prix d'achat mis à jour (CUMP) pour produit {} : {} -> {}",
+                        produit.getNom(), ancienPrixAchat, ligneReq.getNouveauPrixAchat());
             }
         }
 

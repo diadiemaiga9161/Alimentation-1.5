@@ -1267,14 +1267,11 @@ public class VenteServiceImpl implements VenteService {
             }
         }
 
-        // 4. Mettre à jour montantRestant si crédit
+        // montantRestant/creditRegle pour les ventes à crédit sont déjà recalculés par
+        // vente.calculerTotal() (ligne 1240) et par le hook @PreUpdate de l'entité au save
+        // ci-dessous — pas besoin de les recalculer ici (l'ancienne version dupliquait ce
+        // calcul en ignorant montantRetourne, cf. session du 2026-08-02).
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
-            double montantVerse = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0.0;
-            vente.setMontantRestant(nouveauTotal - montantVerse);
-            if (vente.getMontantRestant() <= 0) {
-                vente.setCreditRegle(true);
-                vente.setDateReglement(LocalDate.now());
-            }
             log.info("Crédit - Nouveau montant restant: {}", vente.getMontantRestant());
         }
 

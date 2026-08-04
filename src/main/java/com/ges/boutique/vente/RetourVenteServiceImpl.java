@@ -115,6 +115,9 @@ public class RetourVenteServiceImpl {
             // simplement le solde restant à payer, la caisse n'est pas touchée.
             double montantRetourneCumule = (vente.getMontantRetourne() != null ? vente.getMontantRetourne() : 0.0) + montantCaisseRetourne;
             vente.setMontantRetourne(montantRetourneCumule);
+            // montantRestant/creditRegle sont recalculés automatiquement (dans les deux sens)
+            // par le hook @PreUpdate de Vente au moment du save ci-dessous — pas besoin de les
+            // recalculer ici (voir Vente.onUpdate()).
         } else if (montantCaisseRetourne > 0) {
             // Vente comptant : la somme avait bien été encaissée à la vente, elle est remboursée depuis la caisse.
             caisseService.sortieCaisseRemboursementRetour(montantCaisseRetourne, motifRemboursement, request.getUtilisateurId());

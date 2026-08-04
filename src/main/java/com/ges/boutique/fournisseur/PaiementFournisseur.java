@@ -61,4 +61,13 @@ public class PaiementFournisseur {
     // Ajouter cette relation
     @OneToMany(mappedBy = "paiementId", fetch = FetchType.LAZY)
     private List<AchatPaiementLien> liensAchats = new ArrayList<>();
+
+    @Column(name = "annule", nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
+    private boolean annule = false;
+
+    @Column(name = "date_annulation")
+    private LocalDateTime dateAnnulation;
+
+    @Column(name = "motif_annulation")
+    private String motifAnnulation;
 }

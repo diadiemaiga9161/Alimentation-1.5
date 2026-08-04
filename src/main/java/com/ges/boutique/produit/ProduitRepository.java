@@ -54,4 +54,6 @@ public interface ProduitRepository extends JpaRepository<Produit, Long> {
 
     long countByFournisseurId(Long fournisseurId);
 
+    List<Produit> findByNomIgnoreCase(String nom);
+
 }

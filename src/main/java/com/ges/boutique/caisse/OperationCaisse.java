@@ -89,6 +89,12 @@ public class OperationCaisse {
     @Column(name = "reference_groupe")
     private String referenceGroupe;
 
+    @Column(name = "annule", nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
+    private boolean annule = false;
+
+    @Column(name = "date_annulation_reglement")
+    private LocalDateTime dateAnnulationReglement;
+
     @PrePersist
     protected void onCreate() {
         dateOperation = LocalDateTime.now();

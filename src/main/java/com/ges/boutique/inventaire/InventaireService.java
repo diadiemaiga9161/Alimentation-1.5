@@ -10,6 +10,9 @@ public interface InventaireService {
     void entreeStock(Long produitId, Integer quantite, Long utilisateurId, String motif);
     void entreeStock(Long produitId, Integer quantite, Long utilisateurId, String motif, LocalDateTime dateMouvement);
     void sortieStock(Long produitId, Integer quantite, Long utilisateurId, String motif);
+    void sortieStock(Long produitId, Integer quantite, Long utilisateurId, String motif, String typeSortie);
+    List<MouvementStock> obtenirSorties(String typeSortie, Long utilisateurId, Long produitId,
+                                         LocalDateTime dateDebut, LocalDateTime dateFin);
     void ajusterStock(Long produitId, Integer nouvelleQuantite, Long utilisateurId, String motif);
     void retourStock(Long produitId, Integer quantite, Long utilisateurId, String motif);
 

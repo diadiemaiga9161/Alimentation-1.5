@@ -57,7 +57,8 @@ public class InventaireController {
                 Long.valueOf(request.get("utilisateurId").toString()) : null;
         String motif = (String) request.get("motif");
 
-        inventaireService.sortieStock(produitId, quantite, utilisateurId, motif);
+        String typeSortie = request.get("typeSortie") != null ? request.get("typeSortie").toString() : null;
+        inventaireService.sortieStock(produitId, quantite, utilisateurId, motif, typeSortie);
         return ResponseEntity.ok().build();
     }
 
@@ -110,5 +111,19 @@ public class InventaireController {
     @Operation(summary = "Obtenir tous les mouvements de stock (du plus récent au plus ancien)")
     public ResponseEntity<List<MouvementStock>> obtenirTousMouvements() {
         return ResponseEntity.ok(inventaireService.obtenirTousMouvements());
+    }
+
+    @GetMapping("/sorties")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Obtenir les sorties de stock avec filtres")
+    public ResponseEntity<List<MouvementStock>> obtenirSorties(
+            @RequestParam(required = false) String typeSortie,
+            @RequestParam(required = false) Long utilisateurId,
+            @RequestParam(required = false) Long produitId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        LocalDateTime debut = dateDebut != null ? java.time.LocalDate.parse(dateDebut).atStartOfDay() : null;
+        LocalDateTime fin = dateFin != null ? java.time.LocalDate.parse(dateFin).atTime(23, 59, 59) : null;
+        return ResponseEntity.ok(inventaireService.obtenirSorties(typeSortie, utilisateurId, produitId, debut, fin));
     }
 }

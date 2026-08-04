@@ -27,13 +27,17 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findAllCredits();
 
-    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.creditRegle IS NULL OR v.creditRegle = false) AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateEcheance ASC")
+    // Filtre sur montantRestant (source de vérité) plutôt que sur le flag creditRegle :
+    // creditRegle est un simple cache de "montantRestant <= 0" qui peut rester bloqué à
+    // l'ancienne valeur après un retour ou une modification de vente qui repasse le montant
+    // restant au-dessus de 0 (cf. session du 2026-08-02 — vu en prod sur 2 boutiques).
+    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.montantRestant IS NULL OR v.montantRestant > 0.01) AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateEcheance ASC")
     List<Vente> findCreditsNonRegles();
 
-    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.creditRegle IS NULL OR v.creditRegle = false) AND (v.annulee IS NULL OR v.annulee = false) AND v.dateEcheance < CURRENT_DATE ORDER BY v.dateEcheance ASC")
+    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.montantRestant IS NULL OR v.montantRestant > 0.01) AND (v.annulee IS NULL OR v.annulee = false) AND v.dateEcheance < CURRENT_DATE ORDER BY v.dateEcheance ASC")
     List<Vente> findCreditsEnRetard();
 
-    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND v.creditRegle = true AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateReglement DESC")
+    @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND v.montantRestant <= 0.01 AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateReglement DESC")
     List<Vente> findCreditsRegles();
 
     @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND v.clientNom LIKE %:clientNom% AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
@@ -173,6 +177,12 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT COUNT(v) FROM Vente v WHERE v.annulee = true")
     Long countVentesAnnulees();
 
+    @Query("SELECT v FROM Vente v WHERE v.annulee = true AND v.dateAnnulation BETWEEN :debut AND :fin ORDER BY v.dateAnnulation DESC")
+    List<Vente> findVentesAnnuleesByDateRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
+    @Query("SELECT COUNT(v) FROM Vente v WHERE v.annulee = true AND v.dateAnnulation BETWEEN :debut AND :fin")
+    Long countVentesAnnuleesByDateRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
     @Query("SELECT COUNT(v) FROM Vente v WHERE v.estCredit = true AND v.creditRegle = true " +
            "AND (v.annulee IS NULL OR v.annulee = false)")
     Long countCreditsRegles();
@@ -220,4 +230,17 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
                    "ORDER BY HOUR(v.date_vente) ASC",
            nativeQuery = true)
     List<Object[]> findVentesParHeure();
+
+    /**
+     * Répartition des ventes par vendeur sur une période — pour l'assistant IA.
+     * Retourne [nomComplet (String), nbVentes (Long), ca (BigDecimal)].
+     */
+    @Query(value = "SELECT u.nom_complet AS nom, COUNT(v.id) AS nbVentes, COALESCE(SUM(v.montant_total), 0) AS ca " +
+                   "FROM ventes v JOIN utilisateurs u ON v.vendeur_id = u.id " +
+                   "WHERE v.date_vente >= :debut AND v.date_vente <= :fin " +
+                   "AND (v.annulee IS NULL OR v.annulee = 0) " +
+                   "GROUP BY v.vendeur_id, u.nom_complet " +
+                   "ORDER BY ca DESC",
+           nativeQuery = true)
+    List<Object[]> findVentesParVendeur(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 }

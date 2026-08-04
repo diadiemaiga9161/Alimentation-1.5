@@ -21,12 +21,23 @@ public interface OperationCaisseRepository extends JpaRepository<OperationCaisse
     @Query("SELECT o FROM OperationCaisse o WHERE o.dateOperation BETWEEN :debut AND :fin ORDER BY o.dateOperation DESC")
     List<OperationCaisse> findOperationsParPeriode(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    // MODIFIÉ: Exclure les crédits dont la vente est annulée
-    @Query("SELECT o FROM OperationCaisse o WHERE o.estReglee = false AND o.type = :type AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL)")
+    // Filtre sur le montantRestant de la vente liée (source de vérité) plutôt que sur le
+    // flag dénormalisé o.estReglee : ce flag n'est mis à jour que lors d'un règlement de
+    // crédit, jamais lors d'un retour ou d'une modification de vente qui repasse le montant
+    // restant au-dessus de 0 — il peut donc rester bloqué à "réglé" alors que la vente ne
+    // l'est plus (vu en prod sur 2 boutiques, session du 2026-08-02). Repli sur o.estReglee
+    // uniquement quand il n'y a pas de vente liée (ex: crédit divers sans vente).
+    @Query("SELECT o FROM OperationCaisse o WHERE o.type = :type " +
+           "AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL) " +
+           "AND ((o.vente IS NOT NULL AND (o.vente.montantRestant IS NULL OR o.vente.montantRestant > 0.01)) " +
+           "OR (o.vente IS NULL AND o.estReglee = false))")
     List<OperationCaisse> findCreditsNonRegles(@Param("type") TypeOperationCaisse type);
 
     // MODIFIÉ: Exclure les crédits dont la vente est annulée
-    @Query("SELECT o FROM OperationCaisse o WHERE o.dateEcheance < :date AND o.estReglee = false AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL)")
+    @Query("SELECT o FROM OperationCaisse o WHERE o.dateEcheance < :date " +
+           "AND (o.vente IS NULL OR o.vente.annulee = false OR o.vente.annulee IS NULL) " +
+           "AND ((o.vente IS NOT NULL AND (o.vente.montantRestant IS NULL OR o.vente.montantRestant > 0.01)) " +
+           "OR (o.vente IS NULL AND o.estReglee = false))")
     List<OperationCaisse> findCreditsEnRetard(@Param("date") LocalDateTime date);
 
     @Query("SELECT SUM(o.montant) FROM OperationCaisse o WHERE o.type = :type AND o.dateOperation BETWEEN :debut AND :fin")

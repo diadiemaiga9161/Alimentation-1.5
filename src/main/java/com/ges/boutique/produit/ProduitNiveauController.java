@@ -1,9 +1,16 @@
 package com.ges.boutique.produit;
 
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.inventaire.MouvementStock;
+import com.ges.boutique.inventaire.MouvementStockRepository;
+import com.ges.boutique.inventaire.TypeMouvement;
+import com.ges.boutique.utilisateur.Utilisateur;
+import com.ges.boutique.utilisateur.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +25,14 @@ public class ProduitNiveauController {
 
     private final ProduitNiveauRepository niveauRepository;
     private final ProduitRepository produitRepository;
+    private final MouvementStockRepository mouvementStockRepository;
+    private final UtilisateurRepository utilisateurRepository;
+
+    private Long getUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) return u.getId();
+        return null;
+    }
 
     @GetMapping("/{produitId}/niveaux")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -159,12 +174,46 @@ public class ProduitNiveauController {
             ));
         }
 
+        Utilisateur utilisateurCourant = null;
+        Long userId = getUserId();
+        if (userId != null) {
+            utilisateurCourant = utilisateurRepository.findById(userId).orElse(null);
+        }
+
+        int targetStockAvant = target.getStock() != null ? target.getStock() : 0;
+
         parent.setStock(parentStock - 1);
         niveauRepository.save(parent);
 
-        int newStock = (target.getStock() != null ? target.getStock() : 0) + target.getFacteur();
+        MouvementStock sortieParent = new MouvementStock();
+        sortieParent.setProduit(target.getProduit());
+        sortieParent.setQuantite(1);
+        sortieParent.setTypeMouvement(TypeMouvement.SORTIE);
+        sortieParent.setQuantiteAvant(parentStock);
+        sortieParent.setQuantiteApres(parentStock - 1);
+        sortieParent.setNiveauId(parent.getId());
+        sortieParent.setNiveauNom(parent.getNom());
+        sortieParent.setMotif("Décomposition");
+        sortieParent.setReferenceType("DECOMPOSITION");
+        sortieParent.setUtilisateur(utilisateurCourant);
+        mouvementStockRepository.save(sortieParent);
+
+        int newStock = targetStockAvant + target.getFacteur();
         target.setStock(newStock);
         niveauRepository.save(target);
+
+        MouvementStock entreeTarget = new MouvementStock();
+        entreeTarget.setProduit(target.getProduit());
+        entreeTarget.setQuantite(target.getFacteur());
+        entreeTarget.setTypeMouvement(TypeMouvement.ENTREE);
+        entreeTarget.setQuantiteAvant(targetStockAvant);
+        entreeTarget.setQuantiteApres(newStock);
+        entreeTarget.setNiveauId(target.getId());
+        entreeTarget.setNiveauNom(target.getNom());
+        entreeTarget.setMotif("Décomposition depuis " + parent.getNom());
+        entreeTarget.setReferenceType("DECOMPOSITION");
+        entreeTarget.setUtilisateur(utilisateurCourant);
+        mouvementStockRepository.save(entreeTarget);
 
         List<ProduitNiveau> updatedNiveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
         syncProduitQuantite(produit, updatedNiveaux);

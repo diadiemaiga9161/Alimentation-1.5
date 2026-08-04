@@ -70,6 +70,17 @@ public class InventaireServiceImpl implements InventaireService {
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
     public void sortieStock(Long produitId, Integer quantite, Long utilisateurId, String motif) {
+        doSortieStock(produitId, quantite, utilisateurId, motif, null);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
+    public void sortieStock(Long produitId, Integer quantite, Long utilisateurId, String motif, String typeSortie) {
+        doSortieStock(produitId, quantite, utilisateurId, motif, typeSortie);
+    }
+
+    private void doSortieStock(Long produitId, Integer quantite, Long utilisateurId, String motif, String typeSortie) {
         Produit produit = produitRepository.findById(produitId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
@@ -83,8 +94,23 @@ public class InventaireServiceImpl implements InventaireService {
         produit.setQuantite(nouvelleQuantite);
         produitRepository.save(produit);
 
-        enregistrerMouvement(produit, quantite, TypeMouvement.SORTIE,
-                ancienneQuantite, nouvelleQuantite, utilisateurId, motif, null, null, null);
+        MouvementStock mouvement = new MouvementStock();
+        mouvement.setProduit(produit);
+        mouvement.setQuantite(quantite);
+        mouvement.setTypeMouvement(TypeMouvement.SORTIE);
+        mouvement.setQuantiteAvant(ancienneQuantite);
+        mouvement.setQuantiteApres(nouvelleQuantite);
+        mouvement.setMotif(motif);
+        mouvement.setTypeSortie(typeSortie);
+        mouvement.setDateMouvement(LocalDateTime.now());
+
+        if (utilisateurId != null) {
+            utilisateurRepository.findById(utilisateurId).ifPresent(mouvement::setUtilisateur);
+        }
+        mouvementStockRepository.save(mouvement);
+        notificationService.notifierMiseAJourStock(produit.getId(), produit.getNom(), nouvelleQuantite);
+        log.info("📦 Stock SORTIE: -{} x {} (Type: {}) - Stock: {} → {}",
+                quantite, produit.getNom(), typeSortie, ancienneQuantite, nouvelleQuantite);
     }
 
     @Override
@@ -308,6 +334,12 @@ public class InventaireServiceImpl implements InventaireService {
         stats.put("variationNet", totalEntrees - totalSorties);
 
         return stats;
+    }
+
+    @Override
+    public List<MouvementStock> obtenirSorties(String typeSortie, Long utilisateurId, Long produitId,
+                                                LocalDateTime dateDebut, LocalDateTime dateFin) {
+        return mouvementStockRepository.findSorties(typeSortie, utilisateurId, produitId, dateDebut, dateFin);
     }
 
     @Override
