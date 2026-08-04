@@ -1246,11 +1246,19 @@ public class VenteServiceImpl implements VenteService {
 
         if (Math.abs(difference) > 0.01) {
             if (difference > 0) {
-                // Client paye la différence → ENTRÉE caisse (valable pour comptant ET crédit)
-                caisseService.entreeCaisse(difference,
-                        "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
-                        request.getUtilisateurId(), "ESPECES", null);
-                log.info("Entrée caisse: +{} F (client paye la différence)", difference);
+                if (!Boolean.TRUE.equals(vente.getEstCredit())) {
+                    // Vente comptant → le client paye la différence → ENTRÉE caisse
+                    caisseService.entreeCaisse(difference,
+                            "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
+                            request.getUtilisateurId(), "ESPECES", null);
+                    log.info("Entrée caisse: +{} F (client paye la différence - vente comptant)", difference);
+                } else {
+                    // Vente à crédit → la différence augmente uniquement le montant restant
+                    // à payer (déjà recalculé par vente.calculerTotal() ligne 1240 et par le
+                    // hook @PreUpdate au save) — rien n'a été réellement encaissé, donc pas
+                    // d'entrée caisse (symétrique du cas différence < 0 ci-dessous).
+                    log.info("Modification crédit - Différence positive: {} F, PAS d'entrée caisse (juste ajustement du montant restant)", difference);
+                }
             } else {
                 // ✅ MODIFICATION ICI : Seulement pour les ventes COMPTANT
                 if (!Boolean.TRUE.equals(vente.getEstCredit())) {
