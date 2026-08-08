@@ -145,12 +145,26 @@ public class ClientReleveApiService {
         mouvements.sort(Comparator.comparing(mv -> mv.date, Comparator.nullsLast(Comparator.naturalOrder())));
 
         // ---- 2. Calcul du reliquat cumulé sur TOUT l'historique (jamais filtré avant ce calcul) ----
+        // Sert à l'affichage ligne par ligne (progression chronologique du solde) — reste
+        // utile même s'il peut légèrement s'écarter du total réel sur d'anciens crédits (cf
+        // point 2bis), notamment quand un paiement groupé sur plusieurs crédits ne s'est pas
+        // réparti exactement en OperationCaisse par vente.
         double reliquat = 0.0;
         for (Mouvement m : mouvements) {
             reliquat = reliquat + m.montantVente - m.montantVerse;
             m.resteAPayerApres = reliquat;
         }
-        double soldeActuel = reliquat; // reliquat réel total du client, sans filtre de date ni de type
+
+        // ---- 2bis. Le solde affiché en en-tête (soldeActuel) DOIT toujours correspondre
+        // exactement à la liste des crédits (même source de vérité : Vente.montantRestant),
+        // jamais à la reconstruction chronologique ci-dessus qui repose sur la somme des
+        // OperationCaisse de type REGLEMENT_CREDIT — cette somme peut diverger de
+        // Vente.montantVerse (ex: paiement groupé mal réparti entre les ventes), ce qui
+        // faisait afficher un montant différent de celui de la liste des crédits.
+        double soldeActuel = ventes.stream()
+                .filter(v -> Boolean.TRUE.equals(v.getEstCredit()))
+                .mapToDouble(v -> v.getMontantRestant() != null ? v.getMontantRestant() : 0.0)
+                .sum();
 
         // ---- 3. Éclatement des mouvements VENTE en lignes d'affichage (une par produit) ----
         List<ClientReleveLigneDto> toutesLesLignes = new ArrayList<>();
