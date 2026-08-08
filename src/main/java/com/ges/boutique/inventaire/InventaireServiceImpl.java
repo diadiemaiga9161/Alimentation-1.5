@@ -3,6 +3,8 @@ package com.ges.boutique.inventaire;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.exception.StockInsuffisantException;
 import com.ges.boutique.produit.Produit;
+import com.ges.boutique.produit.ProduitNiveau;
+import com.ges.boutique.produit.ProduitNiveauRepository;
 import com.ges.boutique.produit.ProduitRepository;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
@@ -15,8 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -25,6 +29,7 @@ public class InventaireServiceImpl implements InventaireService {
 
     private final MouvementStockRepository mouvementStockRepository;
     private final ProduitRepository produitRepository;
+    private final ProduitNiveauRepository produitNiveauRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final NotificationService notificationService;
 
@@ -44,8 +49,36 @@ public class InventaireServiceImpl implements InventaireService {
         Produit produit = produitRepository.findById(produitId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
+        List<ProduitNiveau> niveaux = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite + quantite;
+        int nouvelleQuantite;
+        Long niveauCibleId = null;
+        String niveauCibleNom = null;
+
+        if (!niveaux.isEmpty()) {
+            // Produit avec niveaux : Produit.quantite est une valeur DÉRIVÉE, recalculée
+            // à chaque vente à partir des stocks de niveaux (VenteServiceImpl.syncProduitQuantite).
+            // Si on l'incrémentait directement ici, l'entrée serait silencieusement perdue
+            // à la prochaine vente. Le stock entrant va donc toujours dans le niveau racine
+            // (le "produit principal", ex: Carton) — jamais ailleurs.
+            ProduitNiveau niveauPrincipal = niveaux.stream()
+                    .filter(n -> n.getParentId() == null)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Aucun niveau racine (produit principal) trouvé pour le produit " + produit.getNom()));
+            int stockAvant = niveauPrincipal.getStock() != null ? niveauPrincipal.getStock() : 0;
+            niveauPrincipal.setStock(stockAvant + quantite);
+            produitNiveauRepository.save(niveauPrincipal);
+            niveauCibleId = niveauPrincipal.getId();
+            niveauCibleNom = niveauPrincipal.getNom();
+
+            List<ProduitNiveau> niveauxMaj = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+            nouvelleQuantite = (int) niveauxMaj.stream()
+                    .mapToLong(n -> (n.getStock() != null ? n.getStock() : 0L) * facteurVersBase(n, niveauxMaj, new HashSet<>()))
+                    .sum();
+        } else {
+            nouvelleQuantite = ancienneQuantite + quantite;
+        }
 
         produit.setQuantite(nouvelleQuantite);
         produitRepository.save(produit);
@@ -58,12 +91,35 @@ public class InventaireServiceImpl implements InventaireService {
         mouvement.setQuantiteApres(nouvelleQuantite);
         mouvement.setMotif(motif);
         mouvement.setDateMouvement(dateMouvement != null ? dateMouvement : LocalDateTime.now());
+        if (niveauCibleId != null) {
+            mouvement.setNiveauId(niveauCibleId);
+            mouvement.setNiveauNom(niveauCibleNom);
+        }
 
         if (utilisateurId != null) {
             utilisateurRepository.findById(utilisateurId).ifPresent(mouvement::setUtilisateur);
         }
         mouvementStockRepository.save(mouvement);
         notificationService.notifierMiseAJourStock(produit.getId(), produit.getNom(), nouvelleQuantite);
+    }
+
+    private static final int PROFONDEUR_MAX_NIVEAUX = 5;
+
+    /** Combien d'unités de base (niveau feuille) représente 1 unité de ce niveau —
+     *  miroir de VenteServiceImpl.facteurVersBase, pour que Produit.quantite reste
+     *  cohérent quel que soit le point d'entrée (vente ou entrée de stock). */
+    private long facteurVersBase(ProduitNiveau niveau, List<ProduitNiveau> niveaux, Set<Long> visites) {
+        if (!visites.add(niveau.getId()) || visites.size() > PROFONDEUR_MAX_NIVEAUX) {
+            throw new IllegalStateException(
+                    "Hiérarchie de niveaux invalide (cycle ou profondeur > " + PROFONDEUR_MAX_NIVEAUX +
+                            ") pour le produit " + niveau.getProduit().getId());
+        }
+        ProduitNiveau child = niveaux.stream()
+                .filter(n -> niveau.getId().equals(n.getParentId()))
+                .findFirst().orElse(null);
+        if (child == null) return 1L;
+        long facteurChild = child.getFacteur() != null && child.getFacteur() > 0 ? child.getFacteur() : 1L;
+        return facteurChild * facteurVersBase(child, niveaux, visites);
     }
 
     @Override

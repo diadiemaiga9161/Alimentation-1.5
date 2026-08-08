@@ -454,16 +454,9 @@ public class VenteServiceImpl implements VenteService {
 
         if (Boolean.TRUE.equals(vente.getEstCredit())) {
             double montantRegle = vente.getMontantVerse() != null ? vente.getMontantVerse() : 0;
-            double montantTotal  = vente.getMontantTotal()  != null ? vente.getMontantTotal()  : 0;
 
-            // Crédit partiellement réglé → bloquer (impossible de rembourser partiellement via annulation)
-            if (montantRegle > 0 && montantRegle < montantTotal) {
-                throw new RuntimeException("Impossible d'annuler : ce crédit est partiellement réglé ("
-                        + montantRegle + " payé sur " + montantTotal + ")");
-            }
-
-            // Crédit non réglé → restaurer stock uniquement, ne pas toucher la caisse
-            // (aucun argent n'a été encaissé, il n'y a rien à déduire)
+            // Crédit non réglé du tout → restaurer stock uniquement, ne pas toucher la caisse
+            // (aucun argent n'a été encaissé, il n'y a rien à rembourser)
             if (montantRegle <= 0) {
                 retablirStockAncienneVente(vente);
                 vente.setAnnulee(true);
@@ -476,9 +469,10 @@ public class VenteServiceImpl implements VenteService {
                 return venteAnnuleeNonReglee;
             }
 
-            // Crédit totalement réglé (montantRegle >= montantTotal) :
-            // l'argent avait été encaissé via les versements → procéder à l'annulation normale
-            // avec déduction caisse (REMBOURSEMENT_COMMANDE géré par annulerVenteCreditAvecRepercussion)
+            // Crédit réglé (partiellement ou totalement) : l'argent effectivement versé a été
+            // encaissé → procéder à l'annulation normale avec remboursement caisse du montant
+            // réellement versé (montantVerse, pas montantTotal) — géré par
+            // CaisseServiceImpl.annulerVenteCreditAvecRepercussion, déjà correct sur ce point.
         }
 
         retablirStockAncienneVente(vente);
@@ -973,16 +967,19 @@ public class VenteServiceImpl implements VenteService {
     private long calculerDisponibleNiveau(ProduitNiveau niveau, List<ProduitNiveau> niveaux, Produit produit) {
         long direct = niveau.getStock() != null ? niveau.getStock() : 0L;
         if (niveau.getParentId() == null) {
-            // Niveau racine : stock propre uniquement
+            // Niveau racine (produit principal) : stock propre uniquement
             return direct;
         }
-        // Parent direct uniquement — jamais de saut de 2 niveaux ou plus
+        // Récursif : remonte toute la chaîne des parents (pas seulement le parent direct)
+        // pour que la disponibilité annoncée corresponde à ce que la cascade peut vraiment
+        // fournir en décomposant depuis le produit principal si besoin.
         ProduitNiveau parent = niveaux.stream()
                 .filter(n -> n.getId().equals(niveau.getParentId()))
                 .findFirst().orElse(null);
         if (parent == null) return direct;
-        long parentStock = parent.getStock() != null ? parent.getStock() : 0L;
-        return direct + parentStock * niveau.getFacteur();
+        long facteur = niveau.getFacteur() != null && niveau.getFacteur() > 0 ? niveau.getFacteur() : 1L;
+        long disponibleParent = calculerDisponibleNiveau(parent, niveaux, produit);
+        return direct + disponibleParent * facteur;
     }
 
     private LigneVente creerLigneVente(LigneVenteRequest ligneRequest) {
@@ -1128,24 +1125,54 @@ public class VenteServiceImpl implements VenteService {
      */
     private List<MouvementStock> deductUniteNiveauCascade(Produit produit, List<ProduitNiveau> niveaux, ProduitNiveau target) {
         List<MouvementStock> mouvements = new ArrayList<>();
-        int stock = target.getStock() != null ? target.getStock() : 0;
 
-        if (stock > 0) {
-            // Déduction directe depuis le niveau cible
-            target.setStock(stock - 1);
-            mouvements.add(creerMouvementNiveau(
-                    produit, target,
-                    TypeMouvement.SORTIE,
-                    stock, stock - 1,
-                    "Vente - " + produit.getNom() + " [" + target.getNom() + "]"
-            ));
+        // 1. S'assurer qu'au moins 1 unité est disponible à ce niveau, en décomposant en
+        //    cascade depuis les niveaux parents si besoin (récursif, jusqu'au produit
+        //    principal — plus de limite à "un seul cran").
+        mouvements.addAll(assurerStockNiveauDisponible(produit, niveaux, target, 1));
+
+        // 2. Consommer 1 unité pour la vente (le stock est maintenant garanti >= 1)
+        int stock = target.getStock() != null ? target.getStock() : 0;
+        target.setStock(stock - 1);
+        mouvements.add(creerMouvementNiveau(
+                produit, target,
+                TypeMouvement.SORTIE,
+                stock, stock - 1,
+                "Vente - " + produit.getNom() + " [" + target.getNom() + "]"
+        ));
+        return mouvements;
+    }
+
+    private static final int PROFONDEUR_MAX_NIVEAUX_CASCADE = 5;
+
+    /**
+     * S'assure qu'il y a au moins {@code quantiteRequise} unités disponibles au niveau
+     * {@code target}, en décomposant récursivement depuis les niveaux parents (produit
+     * principal compris) si le niveau lui-même et son parent direct sont insuffisants.
+     * Ne consomme rien — c'est le rôle de l'appelant après coup. Lève
+     * StockInsuffisantException seulement si la hiérarchie entière est épuisée.
+     */
+    private List<MouvementStock> assurerStockNiveauDisponible(Produit produit, List<ProduitNiveau> niveaux,
+            ProduitNiveau target, int quantiteRequise) {
+        return assurerStockNiveauDisponible(produit, niveaux, target, quantiteRequise, new HashSet<>());
+    }
+
+    private List<MouvementStock> assurerStockNiveauDisponible(Produit produit, List<ProduitNiveau> niveaux,
+            ProduitNiveau target, int quantiteRequise, Set<Long> visites) {
+        List<MouvementStock> mouvements = new ArrayList<>();
+        int stock = target.getStock() != null ? target.getStock() : 0;
+        if (stock >= quantiteRequise) {
             return mouvements;
         }
 
-        // Stock épuisé → un seul cran vers le parent direct (jamais saut de 2 niveaux)
+        if (!visites.add(target.getId()) || visites.size() > PROFONDEUR_MAX_NIVEAUX_CASCADE) {
+            throw new IllegalStateException("Hiérarchie de niveaux invalide (cycle ou profondeur > "
+                    + PROFONDEUR_MAX_NIVEAUX_CASCADE + ") pour le produit " + produit.getNom());
+        }
+
         if (target.getParentId() == null) {
             throw new StockInsuffisantException("Stock " + target.getNom() +
-                    " de " + produit.getNom() + " épuisé. Ajoutez du stock dans ce niveau.");
+                    " de " + produit.getNom() + " épuisé partout dans la hiérarchie. Ajoutez du stock.");
         }
 
         ProduitNiveau parent = niveaux.stream()
@@ -1153,36 +1180,31 @@ public class VenteServiceImpl implements VenteService {
                 .findFirst()
                 .orElseThrow(() -> new StockInsuffisantException("Niveau parent introuvable pour " + target.getNom()));
 
-        int parentStock = parent.getStock() != null ? parent.getStock() : 0;
-        if (parentStock < 1) {
-            // Pas de remontée automatique — l'utilisateur doit ouvrir manuellement
-            String grandParentNom = parent.getParentId() == null ? produit.getNom() :
-                    niveaux.stream().filter(n -> n.getId().equals(parent.getParentId()))
-                            .findFirst().map(ProduitNiveau::getNom).orElse("le niveau supérieur");
-            throw new StockInsuffisantException("Plus de " + parent.getNom() +
-                    ". Ouvrez d'abord " + grandParentNom + " → " + parent.getNom() +
-                    " avant de vendre en " + target.getNom());
-        }
+        int facteur = target.getFacteur() != null && target.getFacteur() > 0 ? target.getFacteur() : 1;
+        int manque = quantiteRequise - stock;
+        int parentsNecessaires = (int) Math.ceil(manque / (double) facteur);
 
-        // Cascade : décompose 1 parent → facteur unités target, puis consomme 1
-        int facteur = target.getFacteur() != null ? target.getFacteur() : 1;
-        parent.setStock(parentStock - 1);
-        target.setStock(facteur - 1);
+        // Cascade récursive vers le haut (ouvre le grand-parent, arrière-grand-parent, etc.
+        // si le parent direct est lui-même insuffisant — c'est ça qui manquait avant).
+        mouvements.addAll(assurerStockNiveauDisponible(produit, niveaux, parent, parentsNecessaires, visites));
 
-        // SORTIE sur le parent (décomposition)
+        int parentStockAvant = parent.getStock() != null ? parent.getStock() : 0;
+        parent.setStock(parentStockAvant - parentsNecessaires);
         mouvements.add(creerMouvementNiveau(
                 produit, parent,
                 TypeMouvement.SORTIE,
-                parentStock, parentStock - 1,
+                parentStockAvant, parent.getStock(),
                 "Décomposition cascade - " + parent.getNom() + " → " + target.getNom()
         ));
-        // AJUSTEMENT sur le target (stock reconstitué puis 1 consommé = facteur-1 restant)
+
+        int nouveauStockTarget = stock + parentsNecessaires * facteur;
         mouvements.add(creerMouvementNiveau(
                 produit, target,
                 TypeMouvement.AJUSTEMENT,
-                0, facteur - 1,
-                "Cascade depuis " + parent.getNom() + " (+" + (facteur - 1) + " " + target.getNom() + ")"
+                stock, nouveauStockTarget,
+                "Cascade depuis " + parent.getNom() + " (+" + (parentsNecessaires * facteur) + " " + target.getNom() + ")"
         ));
+        target.setStock(nouveauStockTarget);
 
         return mouvements;
     }
