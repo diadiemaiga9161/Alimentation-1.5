@@ -97,10 +97,6 @@
     "PASSWORD": "Nouveau mot de passe",
     "SAVE": "Enregistrer les modifications",
     "LANGUAGE": "Langue de l'application",
-    "APPEARANCE": "Apparence",
-    "THEME_LIGHT": "Clair",
-    "THEME_DARK": "Sombre",
-    "THEME_AUTO": "Auto",
     "ROLE": "Rôle",
     "BOUTIQUE": "Boutique",
     "LOGOUT": "Se déconnecter",
@@ -230,22 +226,6 @@
     "DELETED": "Client supprimé",
     "NO_RESULTS": "Aucun résultat"
   },
-  "RELEVE": {
-    "BUTTON": "Relevé",
-    "TITLE": "Relevé client",
-    "TOTAL_SALES": "Total ventes",
-    "TOTAL_PAYMENTS": "Total versements",
-    "BALANCE": "Solde actuel",
-    "PERIOD_TODAY": "Aujourd'hui", "PERIOD_YESTERDAY": "Hier", "PERIOD_WEEK": "Cette semaine",
-    "PERIOD_MONTH": "Ce mois", "PERIOD_YEAR": "Cette année", "PERIOD_CUSTOM": "Personnalisée", "PERIOD_ALL": "Tout",
-    "FROM_DATE": "Du", "TO_DATE": "Au", "APPLY": "Appliquer",
-    "TYPE_ALL": "Toutes les opérations", "TYPE_SALES": "Ventes uniquement", "TYPE_PAYMENTS": "Versements uniquement",
-    "DATE": "Date", "TIME": "Heure", "TYPE": "Type", "REFERENCE": "Référence",
-    "DESIGNATION": "Désignation", "QUANTITY": "Quantité", "UNIT_PRICE": "Prix unitaire",
-    "SALE_AMOUNT": "Montant vente", "PAYMENT_AMOUNT": "Montant versé", "BALANCE_AFTER": "Reste à payer",
-    "USER": "Utilisateur", "EMPTY": "Aucun mouvement",
-    "PREVIOUS": "Précédent", "NEXT": "Suivant", "PAGE": "Page", "OF": "sur"
-  },
   "CAISSE": {
     "TITLE": "Caisse",
     "BALANCE": "Solde actuel",
@@ -272,8 +252,7 @@
     "PRODUCT": "Produit",
     "QUANTITY": "Quantité",
     "REASON": "Motif",
-    "SAVED": "Mouvement enregistré",
-    "LEVEL": "Niveau"
+    "SAVED": "Mouvement enregistré"
   },
   "REPORTS": {
     "TITLE": "Rapports",
@@ -398,12 +377,7 @@
     "ACTIVE": "Actif", "INACTIVE": "Inactif",
     "PRODUCT": "Produit", "CHOOSE_PRODUCT": "Choisir un produit",
     "QUANTITY": "Quantité", "UNIT_PRICE": "Prix achat unitaire", "SALE_PRICE": "Prix de vente",
-    "AMOUNT_PAID": "Montant payé", "COMMENT": "Commentaire",
-    "PERIOD_TODAY": "Aujourd'hui", "PERIOD_WEEK": "Cette semaine", "PERIOD_MONTH": "Ce mois",
-    "PERIOD_CUSTOM": "Personnalisé", "PERIOD_ALL": "Tout",
-    "FROM_DATE": "Du", "TO_DATE": "Au", "APPLY": "Appliquer",
-    "UNPAID_PURCHASES": "Achats non payés", "NO_UNPAID_PURCHASES": "Aucun achat non payé",
-    "PAY_THIS_PURCHASE": "Payer cet achat"
+    "AMOUNT_PAID": "Montant payé", "COMMENT": "Commentaire"
   },
   "BENEFITS": {
     "TITLE": "Bénéfices", "SUBTITLE": "Analyse de vos bénéfices",

@@ -224,7 +224,7 @@ public class CaisseController {
     }
 
     @GetMapping("/credits/reglements")
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Lister tous les règlements de crédit (optionnel: filtré par période)")
     public ResponseEntity<?> getReglementsParPeriode(
             @RequestParam(required = false) String dateDebut,
@@ -233,7 +233,7 @@ public class CaisseController {
     }
 
     @PostMapping("/credits/reglement/{operationId}/annuler")
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN', 'ROLE_CAISSE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Annuler un règlement de crédit (reverse l'entrée caisse et la dette)")
     public ResponseEntity<?> annulerReglementCredit(
             @PathVariable Long operationId,

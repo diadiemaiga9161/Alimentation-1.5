@@ -49,7 +49,7 @@
   "PROFILE": {
     "TITLE": "My Profile", "FULL_NAME": "Full name", "EMAIL": "Email",
     "PHONE": "Phone", "COUNTRY_CODE": "Country code", "PASSWORD": "New password",
-    "SAVE": "Save changes", "LANGUAGE": "App language", "APPEARANCE": "Appearance", "THEME_LIGHT": "Light", "THEME_DARK": "Dark", "THEME_AUTO": "Auto", "ROLE": "Role",
+    "SAVE": "Save changes", "LANGUAGE": "App language", "ROLE": "Role",
     "BOUTIQUE": "Shop", "LOGOUT": "Sign out",
     "LOGOUT_CONFIRM": "Do you want to sign out?", "SAVED": "Profile updated"
   },
@@ -113,19 +113,6 @@
     "SEARCH": "Search a client", "SAVED": "Client saved", "DELETED": "Client deleted",
     "NO_RESULTS": "No results found"
   },
-  "RELEVE": {
-    "BUTTON": "Statement", "TITLE": "Client statement",
-    "TOTAL_SALES": "Total sales", "TOTAL_PAYMENTS": "Total payments", "BALANCE": "Current balance",
-    "PERIOD_TODAY": "Today", "PERIOD_YESTERDAY": "Yesterday", "PERIOD_WEEK": "This week",
-    "PERIOD_MONTH": "This month", "PERIOD_YEAR": "This year", "PERIOD_CUSTOM": "Custom", "PERIOD_ALL": "All",
-    "FROM_DATE": "From", "TO_DATE": "To", "APPLY": "Apply",
-    "TYPE_ALL": "All operations", "TYPE_SALES": "Sales only", "TYPE_PAYMENTS": "Payments only",
-    "DATE": "Date", "TIME": "Time", "TYPE": "Type", "REFERENCE": "Reference",
-    "DESIGNATION": "Item", "QUANTITY": "Quantity", "UNIT_PRICE": "Unit price",
-    "SALE_AMOUNT": "Sale amount", "PAYMENT_AMOUNT": "Payment amount", "BALANCE_AFTER": "Balance due",
-    "USER": "User", "EMPTY": "No movement",
-    "PREVIOUS": "Previous", "NEXT": "Next", "PAGE": "Page", "OF": "of"
-  },
   "CAISSE": {
     "TITLE": "Cash Register", "BALANCE": "Current balance", "INCOME": "Income",
     "EXPENSE": "Expense", "TRANSFER": "Bank transfer", "OPERATIONS": "Operations",
@@ -136,7 +123,7 @@
     "TITLE": "Inventory", "MOVEMENT": "Movement", "LOW_STOCK": "Low stock",
     "HISTORY": "History", "IN": "Stock in", "OUT": "Stock out",
     "CORRECTION": "Correction", "LOSS": "Loss", "PRODUCT": "Product",
-    "QUANTITY": "Quantity", "REASON": "Reason", "SAVED": "Movement saved", "LEVEL": "Level"
+    "QUANTITY": "Quantity", "REASON": "Reason", "SAVED": "Movement saved"
   },
   "REPORTS": {
     "TITLE": "Reports", "DAILY": "Daily", "WEEKLY": "Weekly", "MONTHLY": "Monthly",
@@ -248,12 +235,7 @@
     "ACTIVE": "Active", "INACTIVE": "Inactive",
     "PRODUCT": "Product", "CHOOSE_PRODUCT": "Choose a product",
     "QUANTITY": "Quantity", "UNIT_PRICE": "Unit purchase price", "SALE_PRICE": "Sale price",
-    "AMOUNT_PAID": "Amount paid", "COMMENT": "Comment",
-    "PERIOD_TODAY": "Today", "PERIOD_WEEK": "This week", "PERIOD_MONTH": "This month",
-    "PERIOD_CUSTOM": "Custom", "PERIOD_ALL": "All",
-    "FROM_DATE": "From", "TO_DATE": "To", "APPLY": "Apply",
-    "UNPAID_PURCHASES": "Unpaid purchases", "NO_UNPAID_PURCHASES": "No unpaid purchases",
-    "PAY_THIS_PURCHASE": "Pay this purchase"
+    "AMOUNT_PAID": "Amount paid", "COMMENT": "Comment"
   },
   "BENEFITS": {
     "TITLE": "Benefits", "SUBTITLE": "Profit analysis",
