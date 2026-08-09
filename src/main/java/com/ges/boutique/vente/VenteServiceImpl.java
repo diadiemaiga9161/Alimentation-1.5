@@ -932,7 +932,7 @@ public class VenteServiceImpl implements VenteService {
             List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
             if (!niveaux.isEmpty()) {
                 // Produit avec niveaux : utiliser le stock total calculé depuis les niveaux
-                long stockTotal = calculerStockTotalNiveaux(niveaux);
+                long stockTotal = calculerStockTotalNiveaux(niveaux, produit);
                 if (stockTotal < entry.getValue()) {
                     throw new StockInsuffisantException("Stock insuffisant pour " + produit.getNom() +
                             ". Disponible: " + stockTotal + " unités base, Demandé: " + entry.getValue());
@@ -966,9 +966,12 @@ public class VenteServiceImpl implements VenteService {
 
     private long calculerDisponibleNiveau(ProduitNiveau niveau, List<ProduitNiveau> niveaux, Produit produit) {
         long direct = niveau.getStock() != null ? niveau.getStock() : 0L;
+        long facteur = niveau.getFacteur() != null && niveau.getFacteur() > 0 ? niveau.getFacteur() : 1L;
         if (niveau.getParentId() == null) {
-            // Niveau racine (produit principal) : stock propre uniquement
-            return direct;
+            // Niveau racine : son parent implicite est le produit principal
+            // lui-même (quantitePrincipale = stock pas encore décomposé).
+            long stockPrincipal = produit.getQuantitePrincipale() != null ? produit.getQuantitePrincipale() : 0L;
+            return direct + stockPrincipal * facteur;
         }
         // Récursif : remonte toute la chaîne des parents (pas seulement le parent direct)
         // pour que la disponibilité annoncée corresponde à ce que la cascade peut vraiment
@@ -977,7 +980,6 @@ public class VenteServiceImpl implements VenteService {
                 .filter(n -> n.getId().equals(niveau.getParentId()))
                 .findFirst().orElse(null);
         if (parent == null) return direct;
-        long facteur = niveau.getFacteur() != null && niveau.getFacteur() > 0 ? niveau.getFacteur() : 1L;
         long disponibleParent = calculerDisponibleNiveau(parent, niveaux, produit);
         return direct + disponibleParent * facteur;
     }
@@ -1171,8 +1173,31 @@ public class VenteServiceImpl implements VenteService {
         }
 
         if (target.getParentId() == null) {
-            throw new StockInsuffisantException("Stock " + target.getNom() +
-                    " de " + produit.getNom() + " épuisé partout dans la hiérarchie. Ajoutez du stock.");
+            // Niveau racine : son parent implicite est le produit principal
+            // lui-même (quantitePrincipale = stock pas encore décomposé,
+            // ex: cartons fermés). C'est ce qui manquait avant : la cascade
+            // s'arrêtait au niveau racine sans jamais puiser dans le produit.
+            int facteurRacine = target.getFacteur() != null && target.getFacteur() > 0 ? target.getFacteur() : 1;
+            int manqueRacine = quantiteRequise - stock;
+            int principalNecessaire = (int) Math.ceil(manqueRacine / (double) facteurRacine);
+            int stockPrincipalAvant = produit.getQuantitePrincipale() != null ? produit.getQuantitePrincipale() : 0;
+            if (stockPrincipalAvant < principalNecessaire) {
+                throw new StockInsuffisantException("Stock " + target.getNom() + " de " + produit.getNom() +
+                        " épuisé, et stock principal insuffisant pour cascader (" + stockPrincipalAvant +
+                        " " + produit.getNom() + " disponible(s)).");
+            }
+            produit.setQuantitePrincipale(stockPrincipalAvant - principalNecessaire);
+            produitRepository.save(produit);
+
+            int nouveauStockRacine = stock + principalNecessaire * facteurRacine;
+            mouvements.add(creerMouvementNiveau(
+                    produit, target,
+                    TypeMouvement.AJUSTEMENT,
+                    stock, nouveauStockRacine,
+                    "Cascade depuis " + produit.getNom() + " (principal) (+" + (principalNecessaire * facteurRacine) + " " + target.getNom() + ")"
+            ));
+            target.setStock(nouveauStockRacine);
+            return mouvements;
         }
 
         ProduitNiveau parent = niveaux.stream()
@@ -1342,6 +1367,16 @@ public class VenteServiceImpl implements VenteService {
             long f = facteurVersBase(n, niveaux);
             total += (n.getStock() != null ? n.getStock() : 0) * f;
         }
+        // Le stock encore "principal" (non décomposé) alimente le niveau
+        // racine (parentId = null) : il faut l'ajouter au total affiché, sinon
+        // le produit semble en rupture tant qu'aucun niveau n'a été ouvert.
+        if (produit.getQuantitePrincipale() != null && !niveaux.isEmpty()) {
+            ProduitNiveau racine = niveaux.stream().filter(n -> n.getParentId() == null).findFirst().orElse(null);
+            if (racine != null) {
+                long facteurRacine = racine.getFacteur() != null && racine.getFacteur() > 0 ? racine.getFacteur() : 1L;
+                total += produit.getQuantitePrincipale() * facteurRacine * facteurVersBase(racine, niveaux);
+            }
+        }
         produit.setQuantite((int) total);
         produitRepository.save(produit);
     }
@@ -1368,11 +1403,18 @@ public class VenteServiceImpl implements VenteService {
     }
 
     // Stock total en unités de base (pour ventes sans niveauId sur produit avec niveaux)
-    private long calculerStockTotalNiveaux(List<ProduitNiveau> niveaux) {
+    private long calculerStockTotalNiveaux(List<ProduitNiveau> niveaux, Produit produit) {
         long total = 0;
         for (ProduitNiveau n : niveaux) {
             long f = facteurVersBase(n, niveaux);
             total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        if (produit.getQuantitePrincipale() != null) {
+            ProduitNiveau racine = niveaux.stream().filter(n -> n.getParentId() == null).findFirst().orElse(null);
+            if (racine != null) {
+                long facteurRacine = racine.getFacteur() != null && racine.getFacteur() > 0 ? racine.getFacteur() : 1L;
+                total += produit.getQuantitePrincipale() * facteurRacine * facteurVersBase(racine, niveaux);
+            }
         }
         return total;
     }

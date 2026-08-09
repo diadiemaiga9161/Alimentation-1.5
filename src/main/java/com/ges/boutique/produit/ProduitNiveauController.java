@@ -41,16 +41,39 @@ public class ProduitNiveauController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("niveaux", niveaux);
+        // Stock du produit principal pas encore décomposé : parent implicite
+        // du niveau racine (parentId = null), nécessaire côté client pour
+        // calculer la disponibilité réelle en cascade (cf. disponibleNiveau()).
+        produitRepository.findById(produitId).ifPresent(p ->
+                response.put("quantitePrincipale", p.getQuantitePrincipale() != null ? p.getQuantitePrincipale() : 0));
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{produitId}/niveaux")
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public ResponseEntity<Map<String, Object>> creerNiveau(
             @PathVariable Long produitId,
             @RequestBody ProduitNiveauRequest request) {
         Produit produit = produitRepository.findById(produitId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + produitId));
+
+        List<ProduitNiveau> existants = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+
+        // Premier niveau créé pour ce produit : son parent implicite est le
+        // produit principal lui-même. On capture son stock actuel dans
+        // quantitePrincipale AVANT qu'une synchronisation ne l'écrase (sinon
+        // cette quantité est perdue dès le premier ajustement de stock d'un
+        // niveau, cf. bug remonté par l'utilisateur).
+        if (existants.isEmpty() && produit.getQuantitePrincipale() == null) {
+            produit.setQuantitePrincipale(produit.getQuantite() != null ? produit.getQuantite() : 0);
+            // Réaffecter le retour de save() : sans @Transactional ici, l'entité
+            // est détachée entre les appels et son numéro de @Version ne serait
+            // pas rafraîchi en mémoire, ce qui ferait échouer le save() suivant
+            // (syncProduitQuantite) avec un OptimisticLockException.
+            produit = produitRepository.save(produit);
+        }
+
         ProduitNiveau niveau = new ProduitNiveau();
         niveau.setProduit(produit);
         niveau.setNom(request.getNom());
@@ -66,7 +89,6 @@ public class ProduitNiveauController {
         } else if (request.getParentId() == null) {
             niveau.setOrdre(1); // racine
         } else {
-            List<ProduitNiveau> existants = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
             int ordreParent = existants.stream()
                     .filter(n -> n.getId().equals(request.getParentId()))
                     .findFirst().map(ProduitNiveau::getOrdre).orElse(0);
@@ -74,6 +96,13 @@ public class ProduitNiveauController {
         }
 
         ProduitNiveau saved = niveauRepository.save(niveau);
+
+        // Rafraîchit immédiatement le total affiché (quantite) pour qu'il
+        // reflète la cascade dès la création du niveau, sans attendre un
+        // premier ajustement de stock.
+        List<ProduitNiveau> niveauxApres = niveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
+        syncProduitQuantite(produit, niveauxApres);
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("niveau", saved);
@@ -233,6 +262,16 @@ public class ProduitNiveauController {
         for (ProduitNiveau n : niveaux) {
             long f = facteurVersBase(n, niveaux);
             total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        // Le stock encore "principal" (non décomposé) alimente le niveau
+        // racine (parentId = null) : il faut l'ajouter au total affiché, sinon
+        // le produit semble en rupture tant qu'aucun niveau n'a été ouvert.
+        if (produit.getQuantitePrincipale() != null && !niveaux.isEmpty()) {
+            ProduitNiveau racine = niveaux.stream().filter(n -> n.getParentId() == null).findFirst().orElse(null);
+            if (racine != null) {
+                long facteurRacine = racine.getFacteur() != null && racine.getFacteur() > 0 ? racine.getFacteur() : 1L;
+                total += produit.getQuantitePrincipale() * facteurRacine * facteurVersBase(racine, niveaux);
+            }
         }
         produit.setQuantite((int) total);
         produitRepository.save(produit);

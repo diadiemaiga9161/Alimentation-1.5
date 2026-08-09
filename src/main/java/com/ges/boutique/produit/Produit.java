@@ -54,6 +54,15 @@ public class Produit {
     @Column(nullable = false)
     private Integer quantite;
 
+    // Stock du produit "principal" encore non décomposé (ex: nombre de cartons
+    // fermés) quand le produit a des niveaux de conditionnement. Le premier
+    // niveau créé (parentId = null) considère implicitement le produit comme
+    // son parent : c'est cette valeur qui alimente sa cascade, pas `quantite`
+    // (qui devient alors un total AFFICHÉ en unité de base, recalculé par
+    // syncProduitQuantite). Reste null tant qu'aucun niveau n'existe.
+    @Column(name = "quantite_principale")
+    private Integer quantitePrincipale;
+
     @Column(name = "seuil_alerte")
     private Integer seuilAlerte = 10;
 
