@@ -4,6 +4,7 @@ import com.ges.boutique.caisse.CaisseService;
 import com.ges.boutique.compte.CompteService;
 import com.ges.boutique.compte.TypeOperationCompte;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.inventaire.InventaireService;
 import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,11 +27,19 @@ public class RetourAchatServiceImpl {
     private final RetourAchatRepository retourAchatRepository;
     private final CaisseService caisseService;
     private final CompteService compteService;
+    private final InventaireService inventaireService;
 
     @Transactional
     public RetourAchat effectuerRetour(RetourAchatRequest request) {
         AchatFournisseur achat = achatRepository.findById(request.getAchatId())
                 .orElseThrow(() -> new RessourceIntrouvableException("Achat introuvable: " + request.getAchatId()));
+
+        // BUG FIX (audit comptable/stock) : un achat déjà annulé n'a plus de dette réelle et son
+        // stock a déjà été retiré — traiter un retour dessus corromprait le stock une seconde
+        // fois. Même garde que payerFournisseur()/annulerPaiementFournisseur().
+        if (achat.getStatut() == StatutAchat.ANNULE) {
+            throw new IllegalStateException("Impossible d'effectuer un retour sur l'achat #" + achat.getId() + " : cet achat est annulé");
+        }
 
         Fournisseur fournisseur = achat.getFournisseur();
         if (fournisseur == null) {
@@ -90,8 +99,14 @@ public class RetourAchatServiceImpl {
             totalRetour += ligne.getSousTotal();
             lignes.add(ligne);
 
-            produit.setQuantite(Math.max(0, produit.getQuantite() - ligneReq.getQuantiteRetournee()));
-            produitRepository.save(produit);
+            // BUG FIX (audit comptable/stock) : la mutation directe de produit.getQuantite() ne
+            // touchait jamais ProduitNiveau.stock (désynchronisation cascade, même famille de
+            // bug que l'annulation d'achat) et ne créait aucun MouvementStock — un retour
+            // fournisseur était donc invisible dans l'historique des mouvements de stock,
+            // contrairement à toutes les autres opérations du système. inventaireService.sortieStock
+            // est niveau-aware et trace le mouvement.
+            String motifStock = "Retour achat fournisseur #" + achat.getId() + " - " + produit.getNom();
+            inventaireService.sortieStock(produit.getId(), ligneReq.getQuantiteRetournee(), request.getUtilisateurId(), motifStock, "RETOUR_ACHAT");
         }
 
         retour.setLignes(lignes);

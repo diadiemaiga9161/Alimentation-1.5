@@ -105,11 +105,25 @@ public class DepenseController {
         return ResponseEntity.ok(response);
     }
 
+    @PatchMapping("/{id}/valider")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Valider une dépense — la verrouille dans les comptes (elle ne pourra plus être supprimée, seulement annulée avec trace)")
+    public ResponseEntity<Map<String, Object>> valider(@PathVariable Long id) {
+        Depense depense = depenseService.validerDepense(id, getUserId());
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Dépense validée");
+        response.put("depense", depense);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Supprimer une dépense — remboursement automatique en caisse")
-    public ResponseEntity<Map<String, Object>> supprimer(@PathVariable Long id) {
-        depenseService.supprimerDepense(id, getUserId());
+    @Operation(summary = "Supprimer une dépense — remboursement automatique en caisse. Si la dépense est validée, elle est annulée avec trace au lieu d'être supprimée.")
+    public ResponseEntity<Map<String, Object>> supprimer(
+            @PathVariable Long id,
+            @RequestParam(required = false) String motif) {
+        depenseService.supprimerDepense(id, getUserId(), motif);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Dépense supprimée et montant remis en caisse");

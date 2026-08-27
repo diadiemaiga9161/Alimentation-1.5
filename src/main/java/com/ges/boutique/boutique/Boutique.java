@@ -63,6 +63,10 @@ public class Boutique {
     @Column(name = "logo", columnDefinition = "MEDIUMTEXT")
     private String logo;
 
+    // Couleur principale du thème, choisie dans Paramètres Boutique — appliquée à toute l'appli Angular.
+    @Column(name = "couleur_primaire")
+    private String couleurPrimaire = "#2a63ff";
+
     @Column(name = "date_creation")
     private LocalDateTime dateCreation;
 

@@ -106,6 +106,9 @@ public class Facture {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "chauffeur")
+    private String chauffeur;
+
     @PrePersist
     protected void onCreate() {
         if (dateCreation == null) {

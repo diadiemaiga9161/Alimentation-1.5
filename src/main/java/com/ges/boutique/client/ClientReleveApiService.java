@@ -180,14 +180,24 @@ public class ClientReleveApiService {
         // ---- 4. Totaux d'en-tête calculés sur la période filtrée (dateDebut/dateFin),
         //          mais sur tout l'historique filtré (pas seulement la page courante).
         //          Le filtre `type` n'affecte PAS ces totaux (ce sont des agrégats globaux).
+        // BUG FIX (audit comptable, suite du correctif soldeActuel ci-dessus — même
+        // "Problème #2" du doc de référence : plusieurs formules pour la même donnée) :
+        // ce if/else ne distinguait que VENTE vs "tout le reste", donc un mouvement RETOUR
+        // (m.montantVerse = valeur de la marchandise retournée, réutilisée telle quelle
+        // pour faire diminuer le reliquat chronologique au §2) tombait dans le else et
+        // était additionné à totalVersements — un retour de marchandise n'est pourtant pas
+        // un versement du client. Résultat : "Total des versements" affiché sur la
+        // Situation client était gonflé de la valeur de tout retour, et ne correspondait
+        // plus à Σ vente.montantVerse (le total affiché dans l'onglet Crédits, lui correct).
+        // Un retour réduit désormais totalVentes (comme dans les rapports CA), pas versements.
         double totalVentes = 0.0;
         double totalVersements = 0.0;
         for (Mouvement m : mouvements) {
             if (!dansPeriode(m.date, dateDebut, dateFin)) continue;
-            if ("VENTE".equals(m.type)) {
-                totalVentes += m.montantVente;
-            } else {
-                totalVersements += m.montantVerse;
+            switch (m.type) {
+                case "VENTE" -> totalVentes += m.montantVente;
+                case "RETOUR" -> totalVentes -= m.montantVerse;
+                default -> totalVersements += m.montantVerse;
             }
         }
 

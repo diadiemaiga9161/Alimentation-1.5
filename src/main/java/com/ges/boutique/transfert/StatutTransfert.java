@@ -8,5 +8,8 @@ public enum StatutTransfert {
     ACCEPTE,
     REJETE,
     COMPLETE,
-    ANNULE
+    ANNULE,
+    /** La notification vers la boutique de destination a échoué (URL injoignable, clé invalide, etc.) —
+     *  le stock a bien été retiré côté source, mais la destination n'a jamais reçu le transfert. */
+    ECHEC_NOTIFICATION
 }

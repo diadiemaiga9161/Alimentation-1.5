@@ -42,6 +42,31 @@ public class Depense {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // ── Traçabilité comptable ────────────────────────────────────────────────
+    // Une dépense validée est "verrouillée" dans les comptes : elle ne peut plus être
+    // supprimée directement, seulement annulée (comme une vente) — pour ne jamais avoir
+    // une entrée/sortie d'argent qui disparaît sans laisser de trace.
+    @Column(nullable = false)
+    private boolean validee = false;
+
+    @Column(name = "valide_par_id")
+    private Long valideParId;
+
+    @Column(name = "valide_le")
+    private LocalDateTime valideLe;
+
+    @Column(nullable = false)
+    private boolean annulee = false;
+
+    @Column(name = "motif_annulation")
+    private String motifAnnulation;
+
+    @Column(name = "annule_par_id")
+    private Long annuleParId;
+
+    @Column(name = "date_annulation")
+    private LocalDateTime dateAnnulation;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

@@ -7,10 +7,11 @@ import java.util.Map;
 public interface DepenseService {
     Depense creerDepense(DepenseRequest request, Long utilisateurId);
     Depense modifierDepense(Long id, DepenseRequest request, Long utilisateurId);
+    Depense validerDepense(Long id, Long utilisateurId);
     Depense obtenirParId(Long id);
     List<Depense> obtenirToutes();
     List<Depense> obtenirParPeriode(LocalDate debut, LocalDate fin);
-    void supprimerDepense(Long id, Long utilisateurId);
+    void supprimerDepense(Long id, Long utilisateurId, String motif);
     Double getTotalDepenses();
     Double getTotalDepensesParPeriode(LocalDate debut, LocalDate fin);
     Map<String, Double> getTotauxParType();

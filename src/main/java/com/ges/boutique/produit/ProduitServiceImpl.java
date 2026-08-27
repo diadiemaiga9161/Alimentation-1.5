@@ -1,16 +1,21 @@
 package com.ges.boutique.produit;
 
 import com.ges.boutique.config.NotificationService;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
 import com.ges.boutique.notification.NotificationPersistanceService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.fournisseur.Fournisseur;
 import com.ges.boutique.fournisseur.FournisseurDto;
 import com.ges.boutique.fournisseur.FournisseurRepository;
 import com.ges.boutique.fournisseur.FournisseurRequest;
+import com.ges.boutique.utilisateur.Utilisateur;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +37,7 @@ public class ProduitServiceImpl implements ProduitService {
     private final ExcelImportService excelImportService;
     private final NotificationService notificationService;
     private final NotificationPersistanceService notifPersistance;
+    private final JournalAuditService journalAuditService;
 
     @Override
     @Transactional
@@ -109,6 +115,9 @@ public class ProduitServiceImpl implements ProduitService {
             produit.setFournisseur(fournisseur);
         }
 
+        Double ancienPrixAchat = produit.getPrixAchat();
+        Double ancienPrixVente = produit.getPrixVente();
+
         if (request.getPrixAchat() != null) {
             if (request.getPrixAchat() <= 0) {
                 throw new IllegalArgumentException("Le prix d'achat doit être supérieur à 0");
@@ -175,7 +184,46 @@ public class ProduitServiceImpl implements ProduitService {
         Produit saved = produitRepository.save(produit);
         notificationService.notifierMiseAJourStock(saved.getId(), saved.getNom(), saved.getQuantite());
         verifierAlertesStock(saved);
+
+        boolean prixAchatChange = request.getPrixAchat() != null && !request.getPrixAchat().equals(ancienPrixAchat);
+        boolean prixVenteChange = request.getPrixVente() != null && !request.getPrixVente().equals(ancienPrixVente);
+        if (prixAchatChange || prixVenteChange) {
+            enregistrerAuditModificationPrix(saved, ancienPrixAchat, ancienPrixVente, prixAchatChange, prixVenteChange);
+        }
+
         return saved;
+    }
+
+    private void enregistrerAuditModificationPrix(Produit produit, Double ancienPrixAchat, Double ancienPrixVente,
+                                                   boolean prixAchatChange, boolean prixVenteChange) {
+        StringBuilder details = new StringBuilder("Produit #" + produit.getId() + " (" + produit.getNom() + ") : ");
+        if (prixVenteChange) {
+            details.append("prix vente ").append(ancienPrixVente).append(" F -> ").append(produit.getPrixVente()).append(" F");
+        }
+        if (prixAchatChange) {
+            if (prixVenteChange) details.append(" ; ");
+            details.append("prix achat ").append(ancienPrixAchat).append(" F -> ").append(produit.getPrixAchat()).append(" F");
+        }
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : null,
+                TypeActionAudit.MODIFICATION_PRIX_PRODUIT,
+                details.toString());
+    }
+
+    /**
+     * Utilisateur actuellement authentifié (contexte de sécurité Spring), pour les besoins
+     * du journal d'audit — même mécanisme que celui déjà utilisé ailleurs dans le projet
+     * (ex: DepenseController.getUserId(), ProduitNiveauController.getUserId()).
+     */
+    private Utilisateur getUtilisateurCourantAudit() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) {
+            return u;
+        }
+        return null;
     }
 
     private void verifierAlertesStock(Produit p) {
@@ -406,6 +454,13 @@ public class ProduitServiceImpl implements ProduitService {
         }
 
         fournisseurRepository.delete(fournisseur);
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : null,
+                TypeActionAudit.SUPPRESSION_FOURNISSEUR,
+                "Fournisseur #" + fournisseur.getId() + " (" + fournisseur.getNom() + ") supprimé");
     }
 
     @Override

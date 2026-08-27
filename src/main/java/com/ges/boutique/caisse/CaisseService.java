@@ -117,4 +117,7 @@ public interface CaisseService {
     // Page Paramètres : réinitialisation et suppression historique
     void reinitialiserJour();
     void supprimerHistorique();
+
+    // Réconciliation caisse par vendeur (lecture seule, calcul à la volée)
+    List<ReconciliationVendeurDTO> getReconciliationVendeurs(LocalDate date);
 }

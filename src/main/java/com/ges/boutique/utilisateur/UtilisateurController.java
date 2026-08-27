@@ -79,6 +79,28 @@ public class UtilisateurController {
         return ResponseEntity.ok(utilisateurService.modifierUtilisateur(id, utilisateurDetails));
     }
 
+    @PatchMapping("/{id}/statut")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Geler ou réactiver un compte (vendeur ou admin)")
+    public ResponseEntity<Utilisateur> changerStatutUtilisateur(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> body) {
+        Boolean actif = body.get("actif");
+        if (actif == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(utilisateurService.changerStatutUtilisateur(id, actif));
+    }
+
+    @PatchMapping("/{id}/employe")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Lier/délier ce vendeur à une fiche Employé (case à cocher du formulaire vendeur)")
+    public ResponseEntity<Utilisateur> gererLienEmploye(
+            @PathVariable Long id,
+            @RequestBody LienEmployeRequest request) {
+        return ResponseEntity.ok(utilisateurService.gererLienEmploye(id, request));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Supprimer un utilisateur")

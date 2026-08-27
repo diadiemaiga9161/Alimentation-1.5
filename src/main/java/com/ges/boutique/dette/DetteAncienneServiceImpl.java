@@ -9,10 +9,14 @@ import com.ges.boutique.caisse.TypeOperationCaisse;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +42,7 @@ public class DetteAncienneServiceImpl implements DetteAncienneService {
     private final UtilisateurRepository utilisateurRepository;
     private final CaisseRepository caisseRepository;
     private final OperationCaisseRepository operationRepository;
+    private final JournalAuditService journalAuditService;
 
     @Override
     @Transactional
@@ -181,6 +186,30 @@ public class DetteAncienneServiceImpl implements DetteAncienneService {
 
         detteRepository.deleteById(id);
         log.info("Dette supprimée avec succès - ID: {}", id);
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        String clientInfo = dette.getClient() != null
+                ? dette.getClient().getNom() + " " + dette.getClient().getPrenom()
+                : "client inconnu";
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : null,
+                TypeActionAudit.SUPPRESSION_CREDIT,
+                "Dette #" + dette.getId() + " (" + clientInfo + ", montant " + dette.getMontantInitial()
+                        + " F) supprimée");
+    }
+
+    /**
+     * Utilisateur actuellement authentifié (contexte de sécurité Spring), pour les besoins
+     * du journal d'audit — même mécanisme que celui déjà utilisé ailleurs dans le projet
+     * (ex: DepenseController.getUserId(), ProduitNiveauController.getUserId()).
+     */
+    private Utilisateur getUtilisateurCourantAudit() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) {
+            return u;
+        }
+        return null;
     }
 
     @Override

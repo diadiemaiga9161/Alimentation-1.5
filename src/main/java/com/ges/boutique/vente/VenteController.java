@@ -120,8 +120,9 @@ public class VenteController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     @Operation(summary = "Obtenir toutes les ventes")
-    public ResponseEntity<List<Map<String, Object>>> obtenirToutesVentes() {
-        List<Vente> ventes = venteService.obtenirToutesVentes();
+    public ResponseEntity<List<Map<String, Object>>> obtenirToutesVentes(
+            @RequestParam(required = false, defaultValue = "false") boolean inclureAnnulees) {
+        List<Vente> ventes = venteService.obtenirToutesVentes(inclureAnnulees);
         return ResponseEntity.ok(venteMapper.toVenteMapList(ventes));
     }
 
@@ -380,22 +381,24 @@ public class VenteController {
             return ResponseEntity.ok(response);
         }
 
-        // Répercuter l'annulation en caisse si demandé
-        if (repercuterCaisse) {
-            try {
-                log.info("Répercussion de l'annulation en caisse pour la vente {}", vente.getNumeroVente());
-                caisseService.annulerVenteAvecRepercussion(vente, utilisateurId, motif);
-                log.info("✅ Annulation répercutée en caisse avec succès");
-            } catch (Exception e) {
-                log.error("Erreur lors de la répercussion en caisse: {}", e.getMessage());
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("success", false);
-                errorResponse.put("error", "Erreur lors de la répercussion en caisse: " + e.getMessage());
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
+        // BUG FIX (audit comptable) : cet appel direct à caisseService.annulerVenteAvecRepercussion
+        // faisait doublon avec l'appel identique déjà effectué à l'intérieur de
+        // venteService.annulerVente() ci-dessous (VenteServiceImpl.annulerVente appelle
+        // caisseService.annulerVente(vente,...) de façon inconditionnelle dès qu'un
+        // paiement a été reçu). Comme CaisseServiceImpl.annulerVenteAvecRepercussion ne
+        // marque jamais vente.annulee=true lui-même (seul VenteServiceImpl le fait, à la
+        // toute fin), le garde-fou "déjà annulée" de la caisse ne se déclenchait pas
+        // entre les deux appels : la caisse était débitée DEUX FOIS du montant de la
+        // vente à chaque annulation avec repercuterCaisse=true (comportement par défaut).
+        // repercuterCaisse=false ne protégeait déjà pas de ce doublon (le second appel,
+        // interne à venteService.annulerVente, est inconditionnel) — ce paramètre est
+        // conservé uniquement pour compatibilité avec le frontend existant.
+        if (!repercuterCaisse) {
+            log.warn("repercuterCaisse=false demandé pour la vente {} mais ignoré : la répercussion caisse est " +
+                    "désormais gérée uniquement par venteService.annulerVente (source unique, plus de doublon)", vente.getNumeroVente());
         }
 
-        // Annuler la vente dans le service vente
+        // Annuler la vente dans le service vente (gère aussi la répercussion caisse)
         Vente venteAnnulee = venteService.annulerVente(venteId, utilisateurId, motif);
 
         Map<String, Object> response = new HashMap<>();
@@ -454,22 +457,23 @@ public class VenteController {
                     vente.getMontantVerse());
         }
 
-        // Répercuter l'annulation en caisse si demandé
-        if (repercuterCaisse) {
-            try {
-                log.info("Répercussion de l'annulation en caisse pour le crédit {}", vente.getNumeroVente());
-                caisseService.annulerVenteCreditAvecRepercussion(vente, utilisateurId, motif);
-                log.info("✅ Annulation du crédit répercutée en caisse avec succès");
-            } catch (Exception e) {
-                log.error("Erreur lors de la répercussion en caisse: {}", e.getMessage());
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("success", false);
-                errorResponse.put("error", "Erreur lors de la répercussion en caisse: " + e.getMessage());
-                return ResponseEntity.badRequest().body(errorResponse);
-            }
+        // BUG FIX (audit comptable) : même doublon que sur /{venteId}/annuler — cet appel
+        // direct à caisseService.annulerVenteCreditAvecRepercussion faisait doublon avec
+        // l'appel identique déjà effectué à l'intérieur de venteService.annulerVenteCredit()
+        // ci-dessous (qui délègue à annulerVente(), lequel appelle caisseService.annulerVenteCredit
+        // de façon inconditionnelle dès qu'un paiement a été reçu). Comme
+        // CaisseServiceImpl.annulerVenteCreditAvecRepercussion ne marque jamais
+        // vente.annulee=true lui-même, son garde-fou "déjà annulé" ne se déclenchait pas
+        // entre les deux appels : la caisse était débitée DEUX FOIS du montant versé à
+        // chaque annulation de crédit payé avec repercuterCaisse=true (comportement par
+        // défaut) — sans même le garde-fou de solde insuffisant qui existe pour les ventes
+        // comptant (aucune vérification sur ce chemin), donc silencieux.
+        if (!repercuterCaisse) {
+            log.warn("repercuterCaisse=false demandé pour le crédit {} mais ignoré : la répercussion caisse est " +
+                    "désormais gérée uniquement par venteService.annulerVenteCredit (source unique, plus de doublon)", vente.getNumeroVente());
         }
 
-        // Annuler le crédit dans le service vente
+        // Annuler le crédit dans le service vente (gère aussi la répercussion caisse)
         Vente venteAnnulee = venteService.annulerVenteCredit(venteId, utilisateurId, motif);
 
         Map<String, Object> response = new HashMap<>();

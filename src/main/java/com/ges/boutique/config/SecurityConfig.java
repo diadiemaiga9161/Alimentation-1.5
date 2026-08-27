@@ -85,6 +85,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/clients/*/releve-pdf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/clients/*/qrcode").permitAll()
 
+                        // Mini-site vitrine automatique — catalogue produits + infos boutique, public (sans connexion)
+                        .requestMatchers("/api/vitrine/**").permitAll()
+
                         // Swagger
                         .requestMatchers(
                                 "/swagger-ui/**", "/swagger-ui.html",
@@ -98,6 +101,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/ventes/*/modifier-lignes").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/ventes/**").hasRole("ADMIN")
                         .requestMatchers("/api/retours-ventes/**").hasAnyRole("ADMIN", "VENDEUR")
+
+                        // Journal d'audit — consultation réservée aux admins
+                        .requestMatchers("/api/journal-audit/**").hasRole("ADMIN")
+
+                        // Sauvegarde automatique / manuelle de la base — réservée aux admins
+                        .requestMatchers("/api/backup/**").hasRole("ADMIN")
 
                         // Toutes les autres routes API → authentification obligatoire
                         .requestMatchers("/api/**").authenticated()

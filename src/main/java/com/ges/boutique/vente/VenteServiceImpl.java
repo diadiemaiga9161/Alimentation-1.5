@@ -13,6 +13,8 @@ import com.ges.boutique.inventaire.InventaireService;
 import com.ges.boutique.inventaire.MouvementStock;
 import com.ges.boutique.inventaire.MouvementStockRepository;
 import com.ges.boutique.inventaire.TypeMouvement;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
 import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitNiveau;
 import com.ges.boutique.produit.ProduitNiveauRepository;
@@ -23,6 +25,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +55,7 @@ public class VenteServiceImpl implements VenteService {
     private final NotificationService notificationService;
     private final MouvementStockRepository mouvementStockRepository;
     private final StockWebSocketService stockWebSocketService;
+    private final JournalAuditService journalAuditService;
 
     /** Identifiant de la boutique courante (1 instance = 1 boutique dans cette architecture). */
     private static final Long BOUTIQUE_ID = 1L;
@@ -210,6 +215,14 @@ public class VenteServiceImpl implements VenteService {
     @Override
     public List<Vente> obtenirToutesVentes() {
         return venteRepository.findAllNonAnnulees();
+    }
+
+    @Override
+    public List<Vente> obtenirToutesVentes(boolean inclureAnnulees) {
+        if (inclureAnnulees) {
+            return venteRepository.findAllOrderByDateVenteDesc();
+        }
+        return obtenirToutesVentes();
     }
 
     @Override
@@ -414,6 +427,14 @@ public class VenteServiceImpl implements VenteService {
         vente.setMotifAnnulation("Suppression vente");
         vente.setDateAnnulation(LocalDateTime.now());
         venteRepository.save(vente);
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : null,
+                TypeActionAudit.SUPPRESSION_VENTE,
+                "Vente #" + vente.getId() + " (" + vente.getNumeroVente() + ") supprimée définitivement (montant "
+                        + vente.getMontantTotal() + " F)");
     }
 
     @Override
@@ -438,6 +459,29 @@ public class VenteServiceImpl implements VenteService {
         vente.setMotifAnnulation("Suppression crédit");
         vente.setDateAnnulation(LocalDateTime.now());
         venteRepository.save(vente);
+
+        Utilisateur auteurCredit = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteurCredit != null ? auteurCredit.getId() : null,
+                auteurCredit != null ? auteurCredit.getNomComplet() : null,
+                TypeActionAudit.SUPPRESSION_VENTE,
+                "Crédit #" + vente.getId() + " (" + vente.getNumeroVente() + ") supprimé définitivement (montant "
+                        + vente.getMontantTotal() + " F, restant dû " + vente.getMontantRestant() + " F)");
+    }
+
+    /**
+     * Utilisateur actuellement authentifié (contexte de sécurité Spring), pour les besoins
+     * du journal d'audit — même mécanisme que celui déjà utilisé ailleurs dans le projet
+     * (ex: DepenseController.getUserId(), ProduitNiveauController.getUserId()) : le principal
+     * JWT est directement l'entité Utilisateur. Retourne null si non disponible (ex: appel
+     * système) plutôt que d'échouer.
+     */
+    private Utilisateur getUtilisateurCourantAudit() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) {
+            return u;
+        }
+        return null;
     }
 
     @Override
@@ -481,6 +525,26 @@ public class VenteServiceImpl implements VenteService {
             caisseService.annulerVente(vente, utilisateurId, motif != null ? motif : "Annulation vente");
         } else {
             caisseService.annulerVenteCredit(vente, utilisateurId, motif != null ? motif : "Annulation crédit");
+
+            // BUG FIX (audit comptable) : CaisseServiceImpl.annulerVenteCreditAvecRepercussion
+            // rembourse depuis la caisse tout vente.montantVerse (cash + avance confondus),
+            // mais n'a aucun moyen de recréditer l'avance du client (AvanceClientService
+            // n'est pas visible depuis CaisseServiceImpl sans dépendance circulaire :
+            // AvanceClientServiceImpl dépend déjà de CaisseService). Résultat avant ce
+            // correctif : la part de la vente payée via avance disparaissait du système
+            // (ni rendue en cash traçable, ni recréditée au client) — contrairement au
+            // flux de retour (RetourVenteServiceImpl) qui gère déjà correctement cette
+            // distinction avec avanceClientService.remettreAvance(). On applique ici le
+            // même traitement, au niveau du service appelant qui a bien les deux dépendances.
+            double avanceUtiliseeSurCetteVente = vente.getMontantAvanceUtilise() != null ? vente.getMontantAvanceUtilise() : 0.0;
+            String clientNomPourAvance = vente.getClientNom() != null ? vente.getClientNom() :
+                    (vente.getClient() != null ? vente.getClient().getNom() : null);
+            if (avanceUtiliseeSurCetteVente > 0 && clientNomPourAvance != null) {
+                avanceClientService.remettreAvance(clientNomPourAvance, avanceUtiliseeSurCetteVente);
+                vente.setMontantAvanceUtilise(0.0);
+                log.info("Avance restituée suite à annulation crédit : {} F pour {} (vente {})",
+                        avanceUtiliseeSurCetteVente, clientNomPourAvance, vente.getNumeroVente());
+            }
         }
 
         vente.setAnnulee(true);

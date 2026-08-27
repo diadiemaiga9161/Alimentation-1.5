@@ -49,38 +49,22 @@ public class InventaireServiceImpl implements InventaireService {
         Produit produit = produitRepository.findById(produitId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
-        List<ProduitNiveau> niveaux = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite;
         Long niveauCibleId = null;
         String niveauCibleNom = null;
 
-        if (!niveaux.isEmpty()) {
-            // Produit avec niveaux : Produit.quantite est une valeur DÉRIVÉE, recalculée
-            // à chaque vente à partir des stocks de niveaux (VenteServiceImpl.syncProduitQuantite).
-            // Si on l'incrémentait directement ici, l'entrée serait silencieusement perdue
-            // à la prochaine vente. Le stock entrant va donc toujours dans le niveau racine
-            // (le "produit principal", ex: Carton) — jamais ailleurs.
-            ProduitNiveau niveauPrincipal = niveaux.stream()
-                    .filter(n -> n.getParentId() == null)
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Aucun niveau racine (produit principal) trouvé pour le produit " + produit.getNom()));
-            int stockAvant = niveauPrincipal.getStock() != null ? niveauPrincipal.getStock() : 0;
-            niveauPrincipal.setStock(stockAvant + quantite);
-            produitNiveauRepository.save(niveauPrincipal);
+        // Produit avec niveaux : Produit.quantite est une valeur DÉRIVÉE, recalculée
+        // à chaque vente à partir des stocks de niveaux (VenteServiceImpl.syncProduitQuantite).
+        // Si on l'incrémentait directement ici, l'entrée serait silencieusement perdue
+        // à la prochaine vente. Le stock entrant va donc toujours dans le niveau racine
+        // (le "produit principal", ex: Carton) — jamais ailleurs.
+        ProduitNiveau niveauPrincipal = appliquerDeltaNiveauRacineEtRecalculer(produit, quantite);
+        if (niveauPrincipal != null) {
             niveauCibleId = niveauPrincipal.getId();
             niveauCibleNom = niveauPrincipal.getNom();
-
-            List<ProduitNiveau> niveauxMaj = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produitId);
-            nouvelleQuantite = (int) niveauxMaj.stream()
-                    .mapToLong(n -> (n.getStock() != null ? n.getStock() : 0L) * facteurVersBase(n, niveauxMaj, new HashSet<>()))
-                    .sum();
-        } else {
-            nouvelleQuantite = ancienneQuantite + quantite;
         }
+        int nouvelleQuantite = produit.getQuantite();
 
-        produit.setQuantite(nouvelleQuantite);
         produitRepository.save(produit);
 
         MouvementStock mouvement = new MouvementStock();
@@ -122,6 +106,58 @@ public class InventaireServiceImpl implements InventaireService {
         return facteurChild * facteurVersBase(child, niveaux, visites);
     }
 
+    /**
+     * BUG FIX (audit comptable/stock, point 3 — désynchronisation cascade) : jusqu'ici, seule
+     * entreeStock() était "niveau-aware" (elle mettait à jour ProduitNiveau.stock en plus de
+     * Produit.quantite) ; toutes les autres méthodes de ce fichier modifiaient Produit.quantite
+     * directement, laissant ProduitNiveau.stock figé. Résultat vérifié en base réelle : un achat
+     * annulé (via sortieStock) puis un nouvel achat (via entreeStock, qui repart du niveau resté
+     * pollué) faisait doubler le stock affiché (40 au lieu de 20 réellement en stock).
+     *
+     * Applique algébriquement `delta` unités de base au niveau racine (le "produit principal",
+     * ex: Carton) d'un produit à niveaux de conditionnement, recalcule Produit.quantite comme
+     * somme de tous les niveaux convertis en unités de base (même logique que entreeStock), et
+     * met à jour l'objet `produit` passé en paramètre (l'appelant reste responsable de le
+     * persister). Tout mouvement de stock générique (entrée, sortie, retour, ajustement manuel,
+     * bonus) passe donc toujours par le niveau racine — jamais par un niveau intermédiaire ou
+     * feuille — exactement comme le fait déjà entreeStock() pour les entrées.
+     *
+     * @return le niveau racine modifié, ou null si le produit n'a pas de niveaux de
+     *         conditionnement (l'appelant doit alors modifier Produit.quantite directement).
+     * @throws StockInsuffisantException si delta est négatif et ferait passer le niveau racine
+     *         sous 0 (le stock à retirer n'est pas physiquement disponible à ce niveau).
+     */
+    private ProduitNiveau appliquerDeltaNiveauRacineEtRecalculer(Produit produit, int delta) {
+        List<ProduitNiveau> niveaux = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+        if (niveaux.isEmpty()) {
+            produit.setQuantite(produit.getQuantite() + delta);
+            return null;
+        }
+
+        ProduitNiveau niveauPrincipal = niveaux.stream()
+                .filter(n -> n.getParentId() == null)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Aucun niveau racine (produit principal) trouvé pour le produit " + produit.getNom()));
+
+        int stockAvant = niveauPrincipal.getStock() != null ? niveauPrincipal.getStock() : 0;
+        int stockApres = stockAvant + delta;
+        if (stockApres < 0) {
+            throw new StockInsuffisantException("Stock insuffisant au niveau " + niveauPrincipal.getNom() +
+                    " pour " + produit.getNom() + ". Disponible: " + stockAvant + ", demandé: " + (-delta));
+        }
+        niveauPrincipal.setStock(stockApres);
+        produitNiveauRepository.save(niveauPrincipal);
+
+        List<ProduitNiveau> niveauxMaj = produitNiveauRepository.findByProduitIdOrderByOrdreAsc(produit.getId());
+        int nouvelleQuantiteProduit = (int) niveauxMaj.stream()
+                .mapToLong(n -> (n.getStock() != null ? n.getStock() : 0L) * facteurVersBase(n, niveauxMaj, new HashSet<>()))
+                .sum();
+        produit.setQuantite(nouvelleQuantiteProduit);
+
+        return niveauPrincipal;
+    }
+
     @Override
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
@@ -145,9 +181,11 @@ public class InventaireServiceImpl implements InventaireService {
         }
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite - quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        // BUG FIX (audit comptable/stock) : voir appliquerDeltaNiveauRacineEtRecalculer — sans
+        // ça, cette sortie (utilisée notamment par l'annulation d'achat fournisseur) ne touchait
+        // que Produit.quantite, jamais ProduitNiveau.stock, d'où la désynchronisation cascade.
+        appliquerDeltaNiveauRacineEtRecalculer(produit, -quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         MouvementStock mouvement = new MouvementStock();
@@ -177,9 +215,10 @@ public class InventaireServiceImpl implements InventaireService {
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite + quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        // BUG FIX (audit comptable/stock) : utilisée par RetourVenteServiceImpl (retour vente) —
+        // voir appliquerDeltaNiveauRacineEtRecalculer pour le pourquoi.
+        appliquerDeltaNiveauRacineEtRecalculer(produit, quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         enregistrerMouvement(produit, quantite, TypeMouvement.RETOUR,
@@ -189,15 +228,20 @@ public class InventaireServiceImpl implements InventaireService {
     @Override
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
-    public void ajusterStock(Long produitId, Integer nouvelleQuantite, Long utilisateurId, String motif) {
+    public void ajusterStock(Long produitId, Integer nouvelleQuantiteDemandee, Long utilisateurId, String motif) {
         Produit produit = produitRepository.findById(produitId)
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
         int ancienneQuantite = produit.getQuantite();
-        int difference = nouvelleQuantite - ancienneQuantite;
+        int difference = nouvelleQuantiteDemandee - ancienneQuantite;
         TypeMouvement type = difference > 0 ? TypeMouvement.ENTREE : TypeMouvement.SORTIE;
 
-        produit.setQuantite(nouvelleQuantite);
+        // BUG FIX (audit comptable/stock) : ajusterStock fixe une quantité ABSOLUE (ex: correction
+        // d'inventaire) — on applique donc la différence (delta) au niveau racine plutôt que
+        // d'écraser Produit.quantite directement, sinon ProduitNiveau.stock se désynchronise dès
+        // le prochain mouvement sur un produit à niveaux.
+        appliquerDeltaNiveauRacineEtRecalculer(produit, difference);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         enregistrerMouvement(produit, Math.abs(difference), type,
@@ -214,9 +258,8 @@ public class InventaireServiceImpl implements InventaireService {
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite + quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        appliquerDeltaNiveauRacineEtRecalculer(produit, quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         String motif = "Achat fournisseur #" + achatId;
@@ -243,9 +286,8 @@ public class InventaireServiceImpl implements InventaireService {
         }
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite - qteEffective;
-
-        produit.setQuantite(nouvelleQuantite);
+        appliquerDeltaNiveauRacineEtRecalculer(produit, -qteEffective);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         String motif = "Annulation achat fournisseur #" + achatId;
@@ -268,9 +310,8 @@ public class InventaireServiceImpl implements InventaireService {
         }
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite - quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        appliquerDeltaNiveauRacineEtRecalculer(produit, -quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         String motif = "Vente #" + venteId;
@@ -289,9 +330,8 @@ public class InventaireServiceImpl implements InventaireService {
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite + quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        appliquerDeltaNiveauRacineEtRecalculer(produit, quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         String motif = "Retour vente #" + retourId;
@@ -310,9 +350,8 @@ public class InventaireServiceImpl implements InventaireService {
                 .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé"));
 
         int ancienneQuantite = produit.getQuantite();
-        int nouvelleQuantite = ancienneQuantite + quantite;
-
-        produit.setQuantite(nouvelleQuantite);
+        appliquerDeltaNiveauRacineEtRecalculer(produit, quantite);
+        int nouvelleQuantite = produit.getQuantite();
         produitRepository.save(produit);
 
         String motif = "Bonus fournisseur - Objectif #" + objectifId;

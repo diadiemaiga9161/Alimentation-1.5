@@ -1,9 +1,14 @@
 package com.ges.boutique.client;
 
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
+import com.ges.boutique.utilisateur.Utilisateur;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +20,7 @@ import java.util.Optional;
 public class ClientServiceImpl implements ClientService {
 
     private final ClientRepository clientRepository;
+    private final JournalAuditService journalAuditService;
 
     @Override
     @Transactional
@@ -55,13 +61,32 @@ public class ClientServiceImpl implements ClientService {
     @Transactional
     @CacheEvict(value = "clients", allEntries = true)
     public void supprimerClient(Long id) {
-        if (!clientRepository.existsById(id)) {
-            throw new RessourceIntrouvableException("Client non trouvé avec l'ID: " + id);
-        }
+        Client client = clientRepository.findById(id)
+                .orElseThrow(() -> new RessourceIntrouvableException("Client non trouvé avec l'ID: " + id));
         if (clientRepository.countVentesActivesByClientId(id) > 0) {
             throw new IllegalStateException("Impossible de supprimer un client associé à des ventes");
         }
         clientRepository.deleteById(id);
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : null,
+                TypeActionAudit.SUPPRESSION_CLIENT,
+                "Client #" + client.getId() + " (" + client.getNom() + " " + client.getPrenom() + ") supprimé");
+    }
+
+    /**
+     * Utilisateur actuellement authentifié (contexte de sécurité Spring), pour les besoins
+     * du journal d'audit — même mécanisme que celui déjà utilisé ailleurs dans le projet
+     * (ex: DepenseController.getUserId(), ProduitNiveauController.getUserId()).
+     */
+    private Utilisateur getUtilisateurCourantAudit() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) {
+            return u;
+        }
+        return null;
     }
 
     @Override

@@ -14,6 +14,13 @@ public interface VenteService {
     Vente obtenirVenteParId(Long id);
     Vente obtenirVenteCreditParId(Long id);
     List<Vente> obtenirToutesVentes();
+
+    /**
+     * Variante pour l'export de données : si inclureAnnulees est true, retourne TOUTES
+     * les ventes (y compris annulées) ; sinon comportement strictement identique à
+     * obtenirToutesVentes() (ventes non annulées uniquement).
+     */
+    List<Vente> obtenirToutesVentes(boolean inclureAnnulees);
     List<Vente> obtenirTousCredits();
     List<Vente> obtenirCreditsNonRegles();
     List<Vente> obtenirCreditsRegles();

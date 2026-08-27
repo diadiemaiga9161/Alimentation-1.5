@@ -4,6 +4,8 @@ import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.inventaire.MouvementStock;
 import com.ges.boutique.inventaire.MouvementStockRepository;
 import com.ges.boutique.inventaire.TypeMouvement;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ public class ProduitNiveauController {
     private final ProduitRepository produitRepository;
     private final MouvementStockRepository mouvementStockRepository;
     private final UtilisateurRepository utilisateurRepository;
+    private final JournalAuditService journalAuditService;
 
     private Long getUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -111,11 +114,16 @@ public class ProduitNiveauController {
 
     @PutMapping("/niveaux/{id}")
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public ResponseEntity<Map<String, Object>> modifierNiveau(
             @PathVariable Long id,
             @RequestBody ProduitNiveauRequest request) {
         ProduitNiveau niveau = niveauRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Niveau non trouvé: " + id));
+
+        Double ancienPrixAchat = niveau.getPrixAchat();
+        Double ancienPrixVente = niveau.getPrixVente();
+
         if (request.getNom() != null) niveau.setNom(request.getNom());
         if (request.getOrdre() != null) niveau.setOrdre(request.getOrdre());
         if (request.getParentId() != null) niveau.setParentId(request.getParentId());
@@ -124,6 +132,32 @@ public class ProduitNiveauController {
         if (request.getPrixVente() != null) niveau.setPrixVente(request.getPrixVente());
         if (request.getStock() != null) niveau.setStock(request.getStock());
         ProduitNiveau saved = niveauRepository.save(niveau);
+
+        boolean prixAchatChange = request.getPrixAchat() != null && !request.getPrixAchat().equals(ancienPrixAchat);
+        boolean prixVenteChange = request.getPrixVente() != null && !request.getPrixVente().equals(ancienPrixVente);
+        if (prixAchatChange || prixVenteChange) {
+            StringBuilder details = new StringBuilder("Niveau #" + saved.getId() + " (" + saved.getNom()
+                    + ") du produit #" + saved.getProduit().getId() + " : ");
+            if (prixVenteChange) {
+                details.append("prix vente ").append(ancienPrixVente).append(" F -> ").append(saved.getPrixVente()).append(" F");
+            }
+            if (prixAchatChange) {
+                if (prixVenteChange) details.append(" ; ");
+                details.append("prix achat ").append(ancienPrixAchat).append(" F -> ").append(saved.getPrixAchat()).append(" F");
+            }
+
+            Utilisateur auteur = null;
+            Long userId = getUserId();
+            if (userId != null) {
+                auteur = utilisateurRepository.findById(userId).orElse(null);
+            }
+            journalAuditService.enregistrer(
+                    auteur != null ? auteur.getId() : null,
+                    auteur != null ? auteur.getNomComplet() : null,
+                    TypeActionAudit.MODIFICATION_PRIX_PRODUIT,
+                    details.toString());
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("niveau", saved);

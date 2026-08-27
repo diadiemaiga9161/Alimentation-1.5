@@ -59,6 +59,11 @@ public class RetourVenteServiceImpl {
         }
 
         double totalRetour = 0.0;
+        // Bénéfice réellement perdu par ce retour, calculé à partir du coût d'achat AU
+        // MOMENT DE LA VENTE (LigneVente.benefice d'origine), jamais du prix catalogue
+        // actuel qui a pu changer depuis — cf. reference-comptabilite: "COGS doit
+        // utiliser le coût réel de l'article au moment de la vente".
+        double totalBeneficeRetourne = 0.0;
         List<LigneRetourVente> lignes = new ArrayList<>();
 
         for (RetourVenteRequest.LigneRetourVenteRequest ligneReq : request.getLignes()) {
@@ -88,10 +93,25 @@ public class RetourVenteServiceImpl {
 
             String motifRetourStock = "Retour vente " + vente.getNumeroVente() + " - " + produit.getNom();
             inventaireService.retourStock(produit.getId(), ligneReq.getQuantiteRetournee(), request.getUtilisateurId(), motifRetourStock);
+
+            totalBeneficeRetourne += calculerBeneficeRetourneLigne(ligneReq, produit);
         }
 
         retour.setLignes(lignes);
         retour.setMontantTotal(totalRetour);
+
+        // BUG FIX (audit comptable) : le CA et le bénéfice affichés dans les rapports
+        // (VenteRepository, ClientRepository) comptaient toujours la marchandise
+        // retournée comme si elle était vendue — le retour ne mettait à jour que le
+        // stock et la caisse, jamais montantTotal/beneficeTotal ni un champ de suivi
+        // équivalent pour les ventes comptant. montantMarchandiseRetournee/beneficeRetourne
+        // (nouveaux champs, distincts de montantRetourne qui reste réservé au calcul du
+        // solde crédit restant) sont soustraits dans les requêtes de CA/bénéfice pour que
+        // le retour réduise bien CA + marge partout, quel que soit le mode de paiement.
+        double montantMarchandiseRetourneeCumule = (vente.getMontantMarchandiseRetournee() != null ? vente.getMontantMarchandiseRetournee() : 0.0) + totalRetour;
+        double beneficeRetourneCumuleGlobal = (vente.getBeneficeRetourne() != null ? vente.getBeneficeRetourne() : 0.0) + totalBeneficeRetourne;
+        vente.setMontantMarchandiseRetournee(montantMarchandiseRetourneeCumule);
+        vente.setBeneficeRetourne(beneficeRetourneCumuleGlobal);
 
         String motifRemboursement = "Retour vente " + vente.getNumeroVente() +
                 " - " + retour.getClientNom() +
@@ -155,5 +175,40 @@ public class RetourVenteServiceImpl {
 
     public List<RetourVente> getAllRetours() {
         return retourVenteRepository.findAllByOrderByDateRetourDesc();
+    }
+
+    /**
+     * Bénéfice à déduire du CA pour la quantité retournée d'une ligne, calculé à partir
+     * du bénéfice RÉEL de la ligne de vente d'origine (coût d'achat au moment de la
+     * vente) quand elle est retrouvable via ligneVenteId — jamais du prix catalogue
+     * actuel du produit, qui a pu changer depuis la vente (cf. reference-comptabilite,
+     * section 3.4/9.3). Si l'appelant n'a pas fourni ligneVenteId (anciens appels), on
+     * retombe sur la marge catalogue actuelle du produit, en dernier recours seulement.
+     */
+    // package-private (pas private) pour permettre un test unitaire direct, comme
+    // LigneVente.calculerSousTotal() ailleurs dans le projet.
+    double calculerBeneficeRetourneLigne(RetourVenteRequest.LigneRetourVenteRequest ligneReq, Produit produit) {
+        int quantite = ligneReq.getQuantiteRetournee() != null ? ligneReq.getQuantiteRetournee() : 0;
+        if (quantite <= 0) return 0.0;
+
+        if (ligneReq.getLigneVenteId() != null) {
+            var ligneVenteOpt = ligneVenteRepository.findById(ligneReq.getLigneVenteId());
+            if (ligneVenteOpt.isPresent()) {
+                LigneVente ligneVente = ligneVenteOpt.get();
+                Integer quantiteVendue = ligneVente.getQuantite();
+                Double beneficeLigneVente = ligneVente.getBenefice();
+                if (quantiteVendue != null && quantiteVendue > 0 && beneficeLigneVente != null) {
+                    double beneficeParUnite = beneficeLigneVente / quantiteVendue;
+                    return beneficeParUnite * quantite;
+                }
+            } else {
+                log.warn("LigneVente {} introuvable pour le calcul du bénéfice retourné — repli sur la marge catalogue actuelle du produit {}",
+                        ligneReq.getLigneVenteId(), produit.getId());
+            }
+        }
+
+        double prixAchatActuel = produit.getPrixAchat() != null ? produit.getPrixAchat() : 0.0;
+        double prixUnitaireRetour = ligneReq.getPrixUnitaire() != null ? ligneReq.getPrixUnitaire() : 0.0;
+        return (prixUnitaireRetour - prixAchatActuel) * quantite;
     }
 }

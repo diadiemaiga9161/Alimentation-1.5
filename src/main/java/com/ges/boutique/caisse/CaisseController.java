@@ -488,6 +488,22 @@ public class CaisseController {
         return ResponseEntity.ok(response);
     }
 
+    // ==================== RÉCONCILIATION CAISSE PAR VENDEUR ====================
+
+    @GetMapping("/reconciliation-vendeurs")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Réconciliation caisse par vendeur pour une date donnée (défaut: aujourd'hui)")
+    public ResponseEntity<Map<String, Object>> getReconciliationVendeurs(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        LocalDate dateCible = date != null ? date : LocalDate.now();
+        List<ReconciliationVendeurDTO> reconciliation = caisseService.getReconciliationVendeurs(dateCible);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("date", dateCible);
+        response.put("reconciliation", reconciliation);
+        return ResponseEntity.ok(response);
+    }
+
     // ==================== GESTION DES ERREURS ====================
 
     @ExceptionHandler(RessourceIntrouvableException.class)

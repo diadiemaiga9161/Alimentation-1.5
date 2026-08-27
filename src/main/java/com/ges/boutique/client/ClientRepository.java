@@ -18,7 +18,10 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
     @Query("SELECT c FROM Client c ORDER BY c.dateCreation DESC")
     List<Client> findAllOrderByDateCreationDesc();
 
-    @Query("SELECT c, COUNT(v) as nombreAchats, COALESCE(SUM(v.montantTotal), 0) as montantTotal " +
+    // BUG FIX (audit comptable) : comptait la marchandise retournée comme toujours
+    // vendue dans le classement "meilleurs clients" — voir VenteRepository pour le
+    // detail du meme correctif applique aux rapports de CA.
+    @Query("SELECT c, COUNT(v) as nombreAchats, COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) as montantTotal " +
             "FROM Client c LEFT JOIN c.ventes v " +
             "WHERE v.annulee IS NULL OR v.annulee = false " +
             "GROUP BY c " +

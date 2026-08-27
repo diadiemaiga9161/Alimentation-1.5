@@ -6,12 +6,17 @@ import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.inventaire.MouvementStock;
 import com.ges.boutique.inventaire.MouvementStockRepository;
 import com.ges.boutique.inventaire.TypeMouvement;
+import com.ges.boutique.journalaudit.JournalAuditService;
+import com.ges.boutique.journalaudit.TypeActionAudit;
 import com.ges.boutique.notification.NotificationPersistanceService;
 import com.ges.boutique.websocket.StockWebSocketService;
 import com.ges.boutique.produit.Categorie;
 import com.ges.boutique.produit.CategorieRepository;
 import com.ges.boutique.produit.Produit;
+import com.ges.boutique.produit.ProduitNiveau;
+import com.ges.boutique.produit.ProduitNiveauRepository;
 import com.ges.boutique.produit.ProduitRepository;
+import com.ges.boutique.utilisateur.Utilisateur;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +27,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
@@ -42,6 +49,7 @@ public class TransfertService {
     private final TransfertRepository transfertRepository;
     private final BoutiquePartenaireRepository partenaireRepository;
     private final ProduitRepository produitRepository;
+    private final ProduitNiveauRepository niveauRepository;
     private final BoutiqueRepository boutiqueRepository;
     private final NotificationPersistanceService notifService;
     private final RestTemplate restTemplate;
@@ -49,6 +57,7 @@ public class TransfertService {
     private final CategorieRepository categorieRepository;
     private final PaiementTransfertRepository paiementTransfertRepository;
     private final StockWebSocketService stockWebSocketService;
+    private final JournalAuditService journalAuditService;
 
     private static final Long BOUTIQUE_ID = 1L;
 
@@ -150,8 +159,25 @@ public class TransfertService {
         // Déduire le stock côté source
         deduireStock(saved);
 
-        // Notifier la boutique destination
-        notifierDestination(saved, dest.getUrl());
+        // Notifier la boutique destination — si ça échoue (URL injoignable, clé invalide,
+        // serveur distant en panne...), on le trace clairement au lieu de laisser croire
+        // que le transfert est arrivé : le stock a bien été retiré ici, mais rien n'a été
+        // reçu de l'autre côté tant que ce n'est pas corrigé et réessayé.
+        boolean notifie = notifierDestination(saved, dest.getUrl());
+        if (!notifie) {
+            saved.setStatut(StatutTransfert.ECHEC_NOTIFICATION);
+            saved.getHistorique().add(HistoriqueTransfert.creer(saved, "ECHEC_NOTIFICATION",
+                    "Échec de l'envoi vers " + dest.getNom() + " (" + dest.getUrl() + ") — "
+                            + "le stock a été retiré ici mais la boutique de destination n'a rien reçu. "
+                            + "Vérifiez l'adresse configurée pour ce partenaire.", currentUser));
+            saved = transfertRepository.save(saved);
+
+            notifService.creer("TRANSFERT_ECHEC", "Échec d'envoi du transfert",
+                    "Transfert " + saved.getNumeroTransfert() + " → " + dest.getNom()
+                            + " n'a pas pu être envoyé (boutique injoignable). Stock retiré mais rien reçu.",
+                    "/pages/transferts");
+            return saved;
+        }
 
         // Notification interne
         notifService.creer("TRANSFERT_ENVOYE", "Transfert envoyé",
@@ -248,7 +274,30 @@ public class TransfertService {
         t.getHistorique().add(HistoriqueTransfert.creer(t, "ANNULATION",
                 "Annulé par " + currentUser + (motif != null ? " — " + motif : ""), currentUser));
 
-        return transfertRepository.save(t);
+        TransfertStock saved = transfertRepository.save(t);
+
+        Utilisateur auteur = getUtilisateurCourantAudit();
+        journalAuditService.enregistrer(
+                auteur != null ? auteur.getId() : null,
+                auteur != null ? auteur.getNomComplet() : currentUser,
+                TypeActionAudit.ANNULATION_TRANSFERT,
+                "Transfert " + saved.getNumeroTransfert() + " (#" + saved.getId() + ") vers "
+                        + saved.getBoutiqueDestNom() + " annulé" + (motif != null ? " — motif : " + motif : ""));
+
+        return saved;
+    }
+
+    /**
+     * Utilisateur actuellement authentifié (contexte de sécurité Spring), pour les besoins
+     * du journal d'audit — même mécanisme que celui déjà utilisé ailleurs dans le projet
+     * (ex: DepenseController.getUserId(), ProduitNiveauController.getUserId()).
+     */
+    private Utilisateur getUtilisateurCourantAudit() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) {
+            return u;
+        }
+        return null;
     }
 
     // Endpoint appelé par une autre boutique pour recevoir un transfert
@@ -340,13 +389,18 @@ public class TransfertService {
             if (optProduit.isPresent()) {
                 produit = optProduit.get();
                 quantiteAvant = produit.getQuantite();
-                produit.setQuantite(produit.getQuantite() + l.getQuantite());
-                produitRepository.save(produit);
+                ajusterStockAvecNiveau(produit, l.getQuantite());
             } else {
                 Categorie categorieDefaut = categorieRepository.findAll().stream().findFirst().orElse(null);
                 if (categorieDefaut == null) {
-                    log.warn("Impossible de créer le produit '{}' : aucune catégorie disponible", l.getProduitNom());
-                    continue;
+                    // Une boutique sans aucune catégorie ne doit jamais bloquer silencieusement
+                    // la réception d'un transfert — on en crée une par défaut à la volée.
+                    Categorie nonClasse = new Categorie();
+                    nonClasse.setNom("Non classé");
+                    nonClasse.setDescription("Catégorie créée automatiquement (réception d'un transfert)");
+                    categorieDefaut = categorieRepository.save(nonClasse);
+                    log.info("Catégorie 'Non classé' créée automatiquement pour recevoir le transfert {}",
+                            t.getNumeroTransfert());
                 }
                 produit = new Produit();
                 produit.setNom(l.getProduitNom());
@@ -423,9 +477,7 @@ public class TransfertService {
             if (opt.isPresent()) {
                 Produit p = opt.get();
                 int ancienneQuantite = p.getQuantite();
-                int nouvelleQte = Math.max(0, ancienneQuantite - l.getQuantite());
-                p.setQuantite(nouvelleQte);
-                produitRepository.save(p);
+                ajusterStockAvecNiveau(p, -l.getQuantite());
 
                 MouvementStock m = new MouvementStock();
                 m.setProduit(p);
@@ -443,16 +495,60 @@ public class TransfertService {
 
     private void restaurerStock(TransfertStock t) {
         for (LigneTransfert l : t.getLignes()) {
-            produitRepository.findById(l.getProduitId()).ifPresent(p -> {
-                p.setQuantite(p.getQuantite() + l.getQuantite());
-                produitRepository.save(p);
-            });
+            produitRepository.findById(l.getProduitId()).ifPresent(p -> ajusterStockAvecNiveau(p, l.getQuantite()));
         }
+    }
+
+    /**
+     * Ajuste le stock d'un produit en tenant compte de ses niveaux (Carton/Paquet/Pièce)
+     * s'il en a. Sans ça, un transfert touchait uniquement Produit.quantite en ignorant
+     * complètement le compteur "quantitePrincipale" dont dépend la cascade niveau (cf.
+     * VenteServiceImpl/ProduitNiveauController) — le stock reçu apparaissait dans la liste
+     * mais restait invendable, exactement comme le bug déjà corrigé sur un produit Lipton.
+     * delta positif = entrée (réception), négatif = sortie (envoi).
+     */
+    private void ajusterStockAvecNiveau(Produit p, int delta) {
+        List<ProduitNiveau> niveaux = niveauRepository.findByProduitIdOrderByOrdreAsc(p.getId());
+        if (niveaux.isEmpty()) {
+            p.setQuantite(Math.max(0, p.getQuantite() + delta));
+            produitRepository.save(p);
+            return;
+        }
+
+        ProduitNiveau racine = niveaux.stream().filter(n -> n.getParentId() == null).findFirst().orElse(null);
+        long facteurRacine = (racine != null && racine.getFacteur() != null && racine.getFacteur() > 0)
+                ? racine.getFacteur() : 1L;
+
+        int quantitePrincipaleActuelle = p.getQuantitePrincipale() != null ? p.getQuantitePrincipale() : 0;
+        // delta est exprimé en unités de base (comme Produit.quantite avant cette méthode) ;
+        // on le convertit en unités "racine" (ex: cartons) pour toucher quantitePrincipale.
+        long deltaRacine = Math.floorDiv(delta, facteurRacine);
+        p.setQuantitePrincipale(Math.max(0, (int) (quantitePrincipaleActuelle + deltaRacine)));
+
+        long total = 0;
+        for (ProduitNiveau n : niveaux) {
+            long f = facteurVersBase(n, niveaux);
+            total += (n.getStock() != null ? n.getStock() : 0) * f;
+        }
+        if (racine != null) {
+            total += (p.getQuantitePrincipale() != null ? p.getQuantitePrincipale() : 0) * facteurRacine
+                    * facteurVersBase(racine, niveaux);
+        }
+        p.setQuantite((int) total);
+        produitRepository.save(p);
+    }
+
+    private long facteurVersBase(ProduitNiveau niveau, List<ProduitNiveau> niveaux) {
+        ProduitNiveau enfant = niveaux.stream()
+                .filter(n -> niveau.getId().equals(n.getParentId()))
+                .findFirst().orElse(null);
+        if (enfant == null) return 1L;
+        return enfant.getFacteur() * facteurVersBase(enfant, niveaux);
     }
 
     // ==================== NOTIFICATION DISTANTE ====================
 
-    private void notifierDestination(TransfertStock t, String destUrl) {
+    private boolean notifierDestination(TransfertStock t, String destUrl) {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("boutiqueSourceNom", t.getBoutiqueSourceNom());
@@ -478,8 +574,10 @@ public class TransfertService {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
 
             restTemplate.postForObject(destUrl.stripTrailing() + "/api/transferts/recevoir", entity, Object.class);
+            return true;
         } catch (Exception e) {
             log.warn("Impossible de notifier la boutique destination {}: {}", destUrl, e.getMessage());
+            return false;
         }
     }
 }

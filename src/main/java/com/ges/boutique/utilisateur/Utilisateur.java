@@ -53,6 +53,11 @@ public class Utilisateur implements UserDetails {
     @Column(columnDefinition = "LONGTEXT")
     private String photo;
 
+    // Lien optionnel vers la fiche Employé (paie) — coché depuis le formulaire vendeur
+    // via l'endpoint dédié /employe (voir UtilisateurServiceImpl.gererLienEmploye).
+    @Column(name = "employe_id")
+    private Long employeId;
+
     @PrePersist
     protected void onCreate() {
         dateCreation = LocalDateTime.now();

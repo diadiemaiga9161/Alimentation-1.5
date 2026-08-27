@@ -110,11 +110,31 @@ public class Vente {
     @Column(name = "montant_restant")
     private Double montantRestant = 0.0;
 
-    /** Cumul des montants retournés (retours d'articles) sur cette vente à crédit.
-     *  Déduit du montant restant à payer, sans jamais toucher la caisse : pour une
-     *  vente à crédit, l'argent des articles retournés n'a jamais été encaissé. */
+    /** Cumul des montants retournés (retours d'articles) sur cette vente à crédit,
+     *  hors part déjà couverte par une avance client (cette part-là est restituée à
+     *  l'avance du client, pas déduite d'un solde encore dû). Déduit du montant restant
+     *  à payer, sans jamais toucher la caisse : pour une vente à crédit, l'argent des
+     *  articles retournés n'a jamais été encaissé. Ne PAS confondre avec
+     *  montantMarchandiseRetournee (valeur totale retournée, pour les rapports CA). */
     @Column(name = "montant_retourne")
     private Double montantRetourne = 0.0;
+
+    /** Valeur TOTALE de la marchandise retournée sur cette vente, TOUTE vente confondue
+     *  (comptant ET crédit) et quel que soit le mode de règlement d'origine — contrairement
+     *  à montantRetourne (crédit uniquement, hors part avance). Sert uniquement à calculer
+     *  un CA net des retours dans les rapports : CA net = montantTotal - montantMarchandiseRetournee.
+     *  Voir RetourVenteServiceImpl.effectuerRetour(). */
+    @Column(name = "montant_marchandise_retournee")
+    private Double montantMarchandiseRetournee = 0.0;
+
+    /** Cumul du bénéfice retiré du CA suite à des retours (comptant ET crédit). Permet
+     *  aux rapports de calculer un bénéfice net des retours via
+     *  (beneficeTotal - beneficeRetourne), au lieu de compter la marchandise retournée
+     *  comme si elle était toujours vendue. Calculé à partir du bénéfice réel de la
+     *  ligne vendue au moment du retour (coût d'achat au moment de la vente), jamais du
+     *  prix catalogue actuel — voir RetourVenteServiceImpl. */
+    @Column(name = "benefice_retourne")
+    private Double beneficeRetourne = 0.0;
 
     @Column(name = "date_reglement")
     private LocalDate dateReglement;

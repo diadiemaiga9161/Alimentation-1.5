@@ -15,6 +15,13 @@ public interface AchatFournisseurRepository extends JpaRepository<AchatFournisse
     @Query("SELECT a FROM AchatFournisseur a WHERE a.fournisseur.id = :fournisseurId AND a.statut != :statut")
     List<AchatFournisseur> findByFournisseurIdAndStatutNot(@Param("fournisseurId") Long fournisseurId, @Param("statut") StatutAchat statut);
 
+    // BUG FIX (audit comptable, point 2) : la branche FIFO de payerFournisseur() utilisait
+    // findByFournisseurIdAndStatutNot(..., PAYE), qui EXCLUT seulement PAYE et laisse donc
+    // passer les achats ANNULE — un achat annulé pouvait ainsi "ressusciter" et recevoir un
+    // nouveau paiement. Cette requête exclut explicitement PAYE et ANNULE.
+    @Query("SELECT a FROM AchatFournisseur a WHERE a.fournisseur.id = :fournisseurId AND a.statut NOT IN :statuts")
+    List<AchatFournisseur> findByFournisseurIdAndStatutNotIn(@Param("fournisseurId") Long fournisseurId, @Param("statuts") List<StatutAchat> statuts);
+
     List<AchatFournisseur> findByFournisseurIdAndDateAchatBetweenOrderByDateAchatDesc(
             Long fournisseurId, LocalDateTime debut, LocalDateTime fin);
 

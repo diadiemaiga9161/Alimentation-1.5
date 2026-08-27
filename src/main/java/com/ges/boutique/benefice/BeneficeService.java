@@ -1,5 +1,8 @@
 package com.ges.boutique.benefice;
 
+import com.ges.boutique.utilisateur.Utilisateur;
+import com.ges.boutique.utilisateur.UtilisateurRepository;
+import com.ges.boutique.vente.Vente;
 import com.ges.boutique.vente.VenteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,7 @@ import java.util.*;
 public class BeneficeService {
 
     private final VenteRepository venteRepository;
+    private final UtilisateurRepository utilisateurRepository;
 
     public Map<String, Object> beneficeJournalier(LocalDate date) {
         LocalDateTime debut = date.atStartOfDay();
@@ -48,7 +52,7 @@ public class BeneficeService {
         }
 
         return buildResult("JOURNALIER", date.toString(), date.toString(),
-                benefice, ca, nbVentes, evolution, lignes);
+                benefice, ca, nbVentes, evolution, lignes, debut, fin);
     }
 
     public Map<String, Object> beneficeHebdomadaire() {
@@ -81,7 +85,7 @@ public class BeneficeService {
         }
 
         return buildResult("HEBDOMADAIRE", lundi.toString(), dimanche.toString(),
-                benefice, ca, nbVentes, evolution, lignes);
+                benefice, ca, nbVentes, evolution, lignes, debut, fin);
     }
 
     public Map<String, Object> beneficeMensuel(int mois, int annee) {
@@ -120,7 +124,7 @@ public class BeneficeService {
         }
 
         return buildResult("MENSUEL", premier.toString(), dernier.toString(),
-                benefice, ca, nbVentes, evolution, lignes);
+                benefice, ca, nbVentes, evolution, lignes, debut, fin);
     }
 
     public Map<String, Object> beneficeAnnuel(int annee) {
@@ -154,15 +158,39 @@ public class BeneficeService {
         }
 
         return buildResult("ANNUEL", premier.toString(), dernier.toString(),
-                benefice, ca, nbVentes, evolution, lignes);
+                benefice, ca, nbVentes, evolution, lignes, debut, fin);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private Map<String, Object> buildResult(String periode, String dateDebut, String dateFin,
                                              double benefice, double ca, long nbVentes,
-                                             double evolution, List<Map<String, Object>> lignes) {
+                                             double evolution, List<Map<String, Object>> lignes,
+                                             LocalDateTime debut, LocalDateTime fin) {
         double marge = ca > 0 ? (benefice / ca) * 100 : 0;
+
+        // Traçabilité comptable : ventes annulées dans la période (bénéfice qu'elles
+        // représentaient avant annulation + qui/quand/pourquoi), pour que le bénéfice
+        // "disparu" d'une annulation reste visible quelque part au lieu de silencieusement
+        // sortir des totaux (mêmes exigences que le journal des Opérations Caisse).
+        List<Vente> ventesAnnuleesEntites = venteRepository.findVentesAnnuleesByDateAnnulationRange(debut, fin);
+        List<Map<String, Object>> ventesAnnulees = new ArrayList<>();
+        double beneficePerdu = 0.0;
+        for (Vente v : ventesAnnuleesEntites) {
+            double b = v.getBeneficeTotal() != null ? v.getBeneficeTotal() : 0.0;
+            beneficePerdu += b;
+            Map<String, Object> a = new LinkedHashMap<>();
+            a.put("venteId", v.getId());
+            a.put("numeroVente", v.getNumeroVente());
+            a.put("dateVente", v.getDateVente());
+            a.put("montantTotal", arrondi(v.getMontantTotal() != null ? v.getMontantTotal() : 0.0));
+            a.put("beneficePerdu", arrondi(b));
+            a.put("dateAnnulation", v.getDateAnnulation());
+            a.put("motifAnnulation", v.getMotifAnnulation());
+            a.put("annulePar", resoudreNomUtilisateur(v.getUtilisateurAnnulation()));
+            ventesAnnulees.add(a);
+        }
+
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("periode", periode);
         r.put("dateDebut", dateDebut);
@@ -173,7 +201,16 @@ public class BeneficeService {
         r.put("margeMoyenne", arrondi(marge));
         r.put("evolution", arrondi(evolution));
         r.put("lignes", lignes);
+        r.put("ventesAnnulees", ventesAnnulees);
+        r.put("beneficePerduAnnulations", arrondi(beneficePerdu));
         return r;
+    }
+
+    private String resoudreNomUtilisateur(Long utilisateurId) {
+        if (utilisateurId == null) return null;
+        return utilisateurRepository.findById(utilisateurId)
+                .map(Utilisateur::getNomComplet)
+                .orElse(null);
     }
 
     private double safe(Double v) { return v != null ? v : 0.0; }

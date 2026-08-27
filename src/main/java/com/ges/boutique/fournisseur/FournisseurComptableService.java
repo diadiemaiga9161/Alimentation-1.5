@@ -319,7 +319,7 @@ public class FournisseurComptableService {
         PaiementFournisseur savedPaiement = paiementRepository.save(paiement);
         log.info("Paiement sauvegardé: id={}, montant={}", savedPaiement.getId(), savedPaiement.getMontant());
 
-        // ========== NOUVEAU: Si achatCibleId est spécifié, payer UNIQUEMENT cet achat ==========
+        // ========== NOUVEAU: Si achatCibleId est spécifié, payer EN PRIORITÉ cet achat ==========
         if (request.getAchatCibleId() != null) {
             log.info("Paiement spécifique pour l'achat #{}", request.getAchatCibleId());
 
@@ -331,32 +331,65 @@ public class FournisseurComptableService {
                 throw new IllegalArgumentException("L'achat #" + request.getAchatCibleId() + " n'appartient pas à ce fournisseur");
             }
 
+            // BUG FIX (audit comptable, point 2) : un achat déjà ANNULE n'a plus aucune dette
+            // réelle (montantRestant a été remis à 0 par annulerAchat()) — le payer explicitement
+            // le ferait "ressusciter" en statut PAYE alors qu'il ne devrait plus jamais recevoir
+            // de paiement. On rejette clairement plutôt que de laisser Math.min(...) masquer le
+            // problème silencieusement.
+            if (achatCible.getStatut() == StatutAchat.ANNULE) {
+                throw new IllegalStateException("Impossible de payer l'achat #" + request.getAchatCibleId() + " : cet achat est annulé");
+            }
+
             double montantRestantAchat = achatCible.getMontantTotal() - achatCible.getMontantPaye();
             double montantApplique = Math.min(request.getMontant(), montantRestantAchat);
 
-            // Créer le lien
-            AchatPaiementLien lien = new AchatPaiementLien();
-            lien.setAchatId(achatCible.getId());
-            lien.setPaiementId(savedPaiement.getId());
-            lien.setMontantApplique(montantApplique);
-            lien.setUtilisateurId(request.getUtilisateurId());
-            achatPaiementLienRepository.save(lien);
+            appliquerPaiementSurAchat(achatCible, savedPaiement.getId(), montantApplique, request.getUtilisateurId());
 
-            // Mettre à jour l'achat
-            double nouveauPaye = achatCible.getMontantPaye() + montantApplique;
-            achatCible.setMontantPaye(nouveauPaye);
-            achatCible.setMontantRestant(achatCible.getMontantTotal() - nouveauPaye);
-            if (achatCible.getMontantRestant() <= 0.01) {
-                achatCible.setStatut(StatutAchat.PAYE);
+            double totalAppliqueFournisseur = montantApplique;
+
+            // BUG FIX (audit comptable, point 1 — "fuite de caisse") : la caisse/le compte a déjà
+            // été débité(e) plus haut pour le montant TOTAL demandé (request.getMontant()), pas
+            // seulement pour montantApplique. Si l'achat ciblé ne devait que 600 F et que 1000 F
+            // ont été payés dessus, les 400 F d'écart ne doivent jamais disparaître : on les
+            // redistribue en FIFO sur les autres achats non payés (hors achat annulé, hors achat
+            // cible déjà traité), exactement comme la branche générale ci-dessous.
+            double excedent = request.getMontant() - montantApplique;
+            if (excedent > 0.01) {
+                List<AchatFournisseur> autresAchatsNonPayes = achatRepository
+                        .findByFournisseurIdAndStatutNotIn(fournisseur.getId(), List.of(StatutAchat.PAYE, StatutAchat.ANNULE))
+                        .stream()
+                        .filter(a -> !a.getId().equals(achatCible.getId()))
+                        .collect(java.util.stream.Collectors.toList());
+
+                double excedentNonDistribue = distribuerPaiementFifo(autresAchatsNonPayes, excedent, savedPaiement.getId(), request.getUtilisateurId());
+                double excedentDistribue = excedent - excedentNonDistribue;
+                totalAppliqueFournisseur += excedentDistribue;
+
+                log.info("Excédent du paiement ciblé #{} redistribué en FIFO sur {} autre(s) achat(s): {} F distribués, {} F restants",
+                        savedPaiement.getId(), autresAchatsNonPayes.size(), excedentDistribue, excedentNonDistribue);
+
+                if (excedentNonDistribue > 0.01) {
+                    // Trop-perçu réel : plus aucun achat non payé chez ce fournisseur ne peut
+                    // absorber le reliquat. On le crédite en avance fournisseur réutilisable
+                    // plutôt que de le laisser disparaître du système.
+                    avanceFournisseurService.crediterExcedentPaiement(
+                            fournisseur.getId(),
+                            excedentNonDistribue,
+                            "Trop-perçu sur paiement ciblé achat #" + achatCible.getId() + " (paiement #" + savedPaiement.getId() + ")",
+                            request.getUtilisateurId()
+                    );
+                    log.warn("⚠️ Trop-perçu de {} F crédité en avance fournisseur (aucun achat non payé restant chez {})",
+                            excedentNonDistribue, fournisseur.getNom());
+                }
             }
-            achatRepository.save(achatCible);
 
-            log.info("🔗 Lien créé: Paiement #{} → Achat #{} : {} F",
-                    savedPaiement.getId(), achatCible.getId(), montantApplique);
-
-            // Mettre à jour le fournisseur (réduire le solde)
-            fournisseur.setTotalPaye(fournisseur.getTotalPaye() + montantApplique);
-            fournisseur.setSolde(fournisseur.getSolde() - montantApplique);
+            // Mettre à jour le fournisseur : totalPaye/solde ne reflètent que ce qui a réellement
+            // été appliqué à une dette (achat cible + achats FIFO). Le trop-perçu éventuellement
+            // converti en avance n'y est PAS inclus : il ne sera comptabilisé dans totalPaye que
+            // lorsqu'il sera effectivement utilisé sur un futur achat (cf. utiliserAvance() dans
+            // creerAchat(), même logique que pour toute avance fournisseur classique).
+            fournisseur.setTotalPaye(fournisseur.getTotalPaye() + totalAppliqueFournisseur);
+            fournisseur.setSolde(fournisseur.getSolde() - totalAppliqueFournisseur);
             fournisseurRepository.save(fournisseur);
 
             log.info("Fournisseur mis à jour: totalPaye={}, nouveau solde={}", fournisseur.getTotalPaye(), fournisseur.getSolde());
@@ -367,49 +400,15 @@ public class FournisseurComptableService {
         // ===================================================================================
 
         // Mode FIFO: répartir sur tous les achats non payés (ancien comportement)
-        List<AchatFournisseur> achatsNonPayes = achatRepository.findByFournisseurIdAndStatutNot(fournisseur.getId(), StatutAchat.PAYE);
-        achatsNonPayes.sort((a1, a2) -> a1.getDateAchat().compareTo(a2.getDateAchat()));
+        // BUG FIX (audit comptable, point 2) : exclut désormais aussi les achats ANNULE (pas
+        // seulement PAYE), sinon un achat annulé peut ressusciter avec un nouveau paiement.
+        List<AchatFournisseur> achatsNonPayes = achatRepository
+                .findByFournisseurIdAndStatutNotIn(fournisseur.getId(), List.of(StatutAchat.PAYE, StatutAchat.ANNULE));
 
         log.info("Nombre d'achats non payés trouvés: {}", achatsNonPayes.size());
+        log.info("Montant à répartir (FIFO): {}", request.getMontant());
 
-        double montantRestantAPayer = request.getMontant();
-        log.info("Montant à répartir (FIFO): {}", montantRestantAPayer);
-
-        for (AchatFournisseur achat : achatsNonPayes) {
-            if (montantRestantAPayer <= 0.01) break;
-
-            double montantDuPourCetAchat = achat.getMontantTotal() - achat.getMontantPaye();
-            double montantApplique = Math.min(montantDuPourCetAchat, montantRestantAPayer);
-
-            log.info("Achat id={}: total={}, dejaPaye={}, du={}, montantApplique={}, reste={}",
-                    achat.getId(), achat.getMontantTotal(), achat.getMontantPaye(),
-                    montantDuPourCetAchat, montantApplique, montantRestantAPayer - montantApplique);
-
-            AchatPaiementLien lien = new AchatPaiementLien();
-            lien.setAchatId(achat.getId());
-            lien.setPaiementId(savedPaiement.getId());
-            lien.setMontantApplique(montantApplique);
-            lien.setUtilisateurId(request.getUtilisateurId());
-            achatPaiementLienRepository.save(lien);
-            log.info("🔗 Lien créé: Paiement #{} → Achat #{} : {} F",
-                    savedPaiement.getId(), achat.getId(), montantApplique);
-
-            if (montantDuPourCetAchat <= montantRestantAPayer + 0.01) {
-                achat.setMontantPaye(achat.getMontantTotal());
-                achat.setMontantRestant(0.0);
-                achat.setStatut(StatutAchat.PAYE);
-                montantRestantAPayer -= montantDuPourCetAchat;
-                log.info("✅ Achat id={} entièrement payé!", achat.getId());
-            } else {
-                double nouveauPaye = achat.getMontantPaye() + montantRestantAPayer;
-                achat.setMontantPaye(nouveauPaye);
-                achat.setMontantRestant(achat.getMontantTotal() - nouveauPaye);
-                log.info("⚠️ Achat id={} partiellement payé: nouveauPaye={}, restant={}",
-                        achat.getId(), nouveauPaye, achat.getMontantRestant());
-                montantRestantAPayer = 0;
-            }
-            achatRepository.save(achat);
-        }
+        distribuerPaiementFifo(achatsNonPayes, request.getMontant(), savedPaiement.getId(), request.getUtilisateurId());
 
         fournisseur.setTotalPaye(fournisseur.getTotalPaye() + request.getMontant());
         fournisseur.setSolde(fournisseur.getSolde() - request.getMontant());
@@ -417,8 +416,13 @@ public class FournisseurComptableService {
         log.info("Fournisseur mis à jour: totalPaye={}, nouveau solde={}", fournisseur.getTotalPaye(), fournisseur.getSolde());
 
         // Vérification finale
+        // BUG FIX (audit comptable, point 2) : cette boucle ne doit JAMAIS toucher un achat
+        // ANNULE. Avant le correctif, un achat annulé dont montantPaye historique == montantTotal
+        // (ex: achat entièrement payé puis annulé) repassait "restant <= 0.01" et se faisait
+        // remettre en statut PAYE ici, sans même qu'un nouveau paiement lui soit appliqué.
         List<AchatFournisseur> tousLesAchats = achatRepository.findByFournisseurIdOrderByDateAchatDesc(fournisseur.getId());
         for (AchatFournisseur achat : tousLesAchats) {
+            if (achat.getStatut() == StatutAchat.ANNULE) continue;
             double restant = achat.getMontantTotal() - achat.getMontantPaye();
             if (restant <= 0.01 && achat.getStatut() != StatutAchat.PAYE) {
                 achat.setStatut(StatutAchat.PAYE);
@@ -521,13 +525,31 @@ public class FournisseurComptableService {
         }
 
         double montantNonPaye = achat.getMontantRestant() != null ? achat.getMontantRestant() : 0.0;
+        // BUG FIX (audit comptable) : "totalPaye doit être décrémenté si un achat payé
+        // est annulé, sinon ce chiffre devient un historique faux, pas un solde utile"
+        // (reference-comptabilite-gestion-boutique.md, section 5.1 — déjà identifié
+        // comme "Problème #4" et corrigé dans annulerPaiementFournisseur ci-dessous,
+        // mais jamais appliqué ici : annulerAchat remboursait bien la caisse/banque et
+        // l'avance, mais ne touchait jamais fournisseur.totalPaye, qui restait gonflé du
+        // montant remboursé (cash + avance) pour toujours.
+        double montantPayeCetAchat = achat.getMontantPaye() != null ? achat.getMontantPaye() : 0.0;
         if (fournisseur != null) {
             fournisseur.setTotalAchats(Math.max(0, fournisseur.getTotalAchats() - achat.getMontantTotal()));
+            fournisseur.setTotalPaye(Math.max(0, fournisseur.getTotalPaye() - montantPayeCetAchat));
             fournisseur.setSolde(Math.max(0, fournisseur.getSolde() - montantNonPaye));
             fournisseurRepository.save(fournisseur);
-            log.info("Fournisseur ajusté: totalAchats={}, solde={}", fournisseur.getTotalAchats(), fournisseur.getSolde());
+            log.info("Fournisseur ajusté: totalAchats={}, totalPaye={}, solde={}",
+                    fournisseur.getTotalAchats(), fournisseur.getTotalPaye(), fournisseur.getSolde());
         }
 
+        // BUG FIX : montant_restant doit être remis à 0 explicitement ici. @PreUpdate
+        // (AchatFournisseur.onUpdate) a une garde "if (statut == ANNULE) return;" donc dès
+        // que statut passe à ANNULE, plus aucun recalcul automatique de montantRestant
+        // n'a lieu — il resterait sinon figé à sa dernière valeur (ex: achat de 1000 payé
+        // à 400 puis annulé afficherait "Restant: 600" indéfiniment, alors que rien n'est
+        // plus dû sur un achat annulé). montantPaye n'est volontairement pas touché ici :
+        // il reste une trace historique de ce qui avait été payé avant annulation.
+        achat.setMontantRestant(0.0);
         achat.setStatut(StatutAchat.ANNULE);
         AchatFournisseur saved = achatRepository.save(achat);
 
@@ -541,6 +563,56 @@ public class FournisseurComptableService {
     // ============================================
     // MÉTHODES PRIVÉES
     // ============================================
+
+    /**
+     * Applique un montant à un achat précis : crée le lien AchatPaiementLien et met à jour
+     * montantPaye/montantRestant/statut de l'achat. Factorisé pour être réutilisé à la fois
+     * par le paiement ciblé (achatCibleId) et par la distribution FIFO (générale + excédent).
+     */
+    private void appliquerPaiementSurAchat(AchatFournisseur achat, Long paiementId, double montantApplique, Long utilisateurId) {
+        AchatPaiementLien lien = new AchatPaiementLien();
+        lien.setAchatId(achat.getId());
+        lien.setPaiementId(paiementId);
+        lien.setMontantApplique(montantApplique);
+        lien.setUtilisateurId(utilisateurId);
+        achatPaiementLienRepository.save(lien);
+
+        double nouveauPaye = achat.getMontantPaye() + montantApplique;
+        achat.setMontantPaye(nouveauPaye);
+        achat.setMontantRestant(achat.getMontantTotal() - nouveauPaye);
+        if (achat.getMontantRestant() <= 0.01) {
+            achat.setStatut(StatutAchat.PAYE);
+        }
+        achatRepository.save(achat);
+
+        log.info("🔗 Lien créé: Paiement #{} → Achat #{} : {} F", paiementId, achat.getId(), montantApplique);
+    }
+
+    /**
+     * Distribue un montant en FIFO (achat le plus ancien d'abord) sur une liste d'achats non
+     * payés déjà filtrée par l'appelant (PAYE et ANNULE doivent déjà être exclus). Retourne le
+     * montant qui n'a pas pu être distribué (0 si tout a été absorbé par la dette existante).
+     */
+    private double distribuerPaiementFifo(List<AchatFournisseur> achats, double montantADistribuer, Long paiementId, Long utilisateurId) {
+        List<AchatFournisseur> tries = new ArrayList<>(achats);
+        tries.sort((a1, a2) -> a1.getDateAchat().compareTo(a2.getDateAchat()));
+
+        double reste = montantADistribuer;
+        for (AchatFournisseur achat : tries) {
+            if (reste <= 0.01) break;
+
+            double montantDu = achat.getMontantTotal() - achat.getMontantPaye();
+            if (montantDu <= 0.01) continue;
+
+            double applique = Math.min(montantDu, reste);
+            appliquerPaiementSurAchat(achat, paiementId, applique, utilisateurId);
+            reste -= applique;
+
+            log.info("Achat id={} (FIFO): du={}, applique={}, reste_a_distribuer={}",
+                    achat.getId(), montantDu, applique, reste);
+        }
+        return reste;
+    }
 
     private Produit creerNouveauProduitDepuisAchat(LigneAchatRequest ligneReq) {
         if (ligneReq.getNouveauProduitNom() == null || ligneReq.getNouveauProduitNom().trim().isEmpty()) {

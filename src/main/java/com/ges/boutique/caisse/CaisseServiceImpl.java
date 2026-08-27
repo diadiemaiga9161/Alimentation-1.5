@@ -20,6 +20,7 @@ import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitRepository;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
+import com.ges.boutique.vente.ModePaiement;
 import com.ges.boutique.vente.Vente;
 import com.ges.boutique.vente.VenteRepository;
 import lombok.RequiredArgsConstructor;
@@ -1239,7 +1240,8 @@ public class CaisseServiceImpl implements CaisseService {
         LocalDateTime debut = dateDebut.atStartOfDay();
         LocalDateTime fin = dateFin.atTime(LocalTime.MAX);
 
-        List<OperationCaisse> operations = operationRepository.findOperationsParPeriode(debut, fin).stream()
+        List<OperationCaisse> operationsBrutes = operationRepository.findOperationsParPeriode(debut, fin);
+        List<OperationCaisse> operations = operationsBrutes.stream()
                 .filter(op -> !Boolean.TRUE.equals(op.getVenteAnnulee()))
                 .toList();
 
@@ -1295,6 +1297,36 @@ public class CaisseServiceImpl implements CaisseService {
         // CORRECTION: totalSortiesCaisse n'inclut PAS les remboursements retour
         Double totalSortiesCaisse = totalSorties + totalPaiementsFournisseurs + totalAvancesFournisseurs + totalPaiementsEmployes + totalAnnulations;
 
+        // BUG FIX (audit comptable) : soldeNetPeriode = totalEntreesCaisse - totalSortiesCaisse
+        // ne reflétait pas le vrai mouvement de caisse sur la période, car totalSortiesCaisse
+        // exclut délibérément les remboursements retour (cf. commentaire ci-dessus) ET,
+        // avant ce correctif, les virements vers la banque, dépenses, remboursements de
+        // commande annulée et autres types non listés dans le switch — tout type
+        // d'opération non explicitement géré y tombait silencieusement (default: break),
+        // sans jamais impacter ni entrées ni sorties. Calcul robuste : chaque OperationCaisse
+        // porte déjà soldeAvant/soldeApres qui reflète FIDÈLEMENT son effet réel sur la
+        // caisse (delta positif ou négatif, quel que soit le type) ; sommer ces deltas sur
+        // TOUTE la période (liste non filtrée sur venteAnnulee, pour que vente + annulation
+        // survenues toutes les deux dans la période se neutralisent correctement) donne le
+        // vrai solde net, sans dépendre d'une classification manuelle exhaustive par type.
+        //
+        // BUG FIX #2 (2026-08-13) : ce solde net alimente la carte "Bénéfice net / Perte
+        // nette" du mois (soldeNetPeriode côté front), donc c'est censé mesurer le
+        // RÉSULTAT de l'activité, pas le solde physique du tiroir-caisse. Or un
+        // VIREMENT_BANQUE fait bien baisser le solde du tiroir-caisse (l'argent quitte la
+        // caisse), mais ce n'est pas une dépense/perte : l'argent reste à la boutique,
+        // simplement déplacé vers le compte en banque. Vérifié sur les données réelles de
+        // juillet (boutique1, VPS) : 97 581 950 F de virements ce mois-là faisaient passer
+        // l'affichage de +89 772 350 F (vrai résultat) à -7 809 600 F ("Perte nette"),
+        // alors que le mois était largement bénéficiaire. On exclut donc VIREMENT_BANQUE de
+        // ce calcul (les autres types, y compris ceux non listés dans le switch ci-dessus,
+        // restent inclus via le même mécanisme robuste).
+        double soldeNetPeriodeReel = operationsBrutes.stream()
+                .filter(op -> op.getType() != TypeOperationCaisse.VIREMENT_BANQUE)
+                .mapToDouble(op -> (op.getSoldeApres() != null ? op.getSoldeApres() : 0.0)
+                        - (op.getSoldeAvant() != null ? op.getSoldeAvant() : 0.0))
+                .sum();
+
         Map<LocalDate, Double> chiffreParJour = new HashMap<>();
         Map<LocalDate, Integer> nombreOperationsParJour = new HashMap<>();
 
@@ -1318,7 +1350,7 @@ public class CaisseServiceImpl implements CaisseService {
         stats.put("totalAnnulations", arrondir(totalAnnulations));
         stats.put("totalSorties", arrondir(totalSortiesCaisse));
         stats.put("totalEntrees", arrondir(totalEntreesCaisse));
-        stats.put("soldeNetPeriode", arrondir(totalEntreesCaisse - totalSortiesCaisse));
+        stats.put("soldeNetPeriode", arrondir(soldeNetPeriodeReel));
         stats.put("nombreOperations", operations.size());
         stats.put("moyenneJournaliere", arrondir(totalEntreesCaisse / (ChronoUnit.DAYS.between(dateDebut, dateFin) + 1)));
         stats.put("chiffreParJour", chiffreParJour);
@@ -1941,6 +1973,76 @@ public class CaisseServiceImpl implements CaisseService {
     private Double arrondir(Double valeur) {
         if (valeur == null) return 0.0;
         return BigDecimal.valueOf(valeur).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    // ==================== RÉCONCILIATION CAISSE PAR VENDEUR ====================
+
+    /**
+     * Rapport en lecture seule : pour une date donnée, calcule à la volée ce que chaque
+     * vendeur ayant eu de l'activité ce jour-là doit remettre en espèces à l'admin.
+     * Aucune nouvelle table : agrège les Vente (ventes comptant/crédit du jour) et les
+     * OperationCaisse de type REGLEMENT_CREDIT (règlements de crédit encaissés en espèces).
+     */
+    @Override
+    public List<ReconciliationVendeurDTO> getReconciliationVendeurs(LocalDate date) {
+        LocalDate dateCible = date != null ? date : LocalDate.now();
+        LocalDateTime debut = dateCible.atStartOfDay();
+        LocalDateTime fin = dateCible.atTime(LocalTime.MAX);
+
+        Map<Long, ReconciliationVendeurDTO> parVendeur = new LinkedHashMap<>();
+
+        // 1) Ventes (comptant + crédit) du jour, non annulées, avec vendeur identifié
+        List<Vente> ventesDuJour = venteRepository.findByDateRange(debut, fin).stream()
+                .filter(v -> !Boolean.TRUE.equals(v.getAnnulee()))
+                .filter(v -> v.getVendeur() != null)
+                .toList();
+
+        for (Vente vente : ventesDuJour) {
+            Long vendeurId = vente.getVendeur().getId();
+            String vendeurNom = vente.getVendeur().getNomComplet();
+            ReconciliationVendeurDTO dto = parVendeur.computeIfAbsent(vendeurId,
+                    id -> new ReconciliationVendeurDTO(id, vendeurNom, 0L, 0.0, 0.0, 0.0, 0.0));
+
+            double montantTotal = vente.getMontantTotal() != null ? vente.getMontantTotal() : 0.0;
+
+            if (Boolean.TRUE.equals(vente.getEstCredit())) {
+                dto.setTotalVentesCredit(arrondir(dto.getTotalVentesCredit() + montantTotal));
+            } else {
+                // Vente comptant (mode de règlement != crédit)
+                dto.setNombreVentes(dto.getNombreVentes() + 1);
+                if (vente.getModePaiement() == ModePaiement.ESPECES) {
+                    dto.setTotalVentesEspeces(arrondir(dto.getTotalVentesEspeces() + montantTotal));
+                }
+            }
+        }
+
+        // 2) Règlements de crédit du jour, encaissés en ESPECES, non annulés (ni le règlement,
+        //    ni la vente liée), avec un utilisateur (vendeur) identifié
+        List<OperationCaisse> reglementsEspecesDuJour = operationRepository.findOperationsParPeriode(debut, fin).stream()
+                .filter(op -> op.getType() == TypeOperationCaisse.REGLEMENT_CREDIT)
+                .filter(op -> !op.isAnnule())
+                .filter(op -> !Boolean.TRUE.equals(op.getVenteAnnulee()))
+                .filter(op -> op.getModePaiement() == ModePaiementCaisse.ESPECES)
+                .filter(op -> op.getUtilisateur() != null)
+                .toList();
+
+        for (OperationCaisse reglement : reglementsEspecesDuJour) {
+            Long vendeurId = reglement.getUtilisateur().getId();
+            String vendeurNom = reglement.getUtilisateur().getNomComplet();
+            ReconciliationVendeurDTO dto = parVendeur.computeIfAbsent(vendeurId,
+                    id -> new ReconciliationVendeurDTO(id, vendeurNom, 0L, 0.0, 0.0, 0.0, 0.0));
+
+            double montant = reglement.getMontant() != null ? reglement.getMontant() : 0.0;
+            dto.setTotalReglementsCreditEspeces(arrondir(dto.getTotalReglementsCreditEspeces() + montant));
+        }
+
+        List<ReconciliationVendeurDTO> resultat = new ArrayList<>(parVendeur.values());
+        for (ReconciliationVendeurDTO dto : resultat) {
+            dto.setTotalAiRemettre(arrondir(dto.getTotalVentesEspeces() + dto.getTotalReglementsCreditEspeces()));
+        }
+        resultat.sort(Comparator.comparing(ReconciliationVendeurDTO::getVendeurNom, String.CASE_INSENSITIVE_ORDER));
+
+        return resultat;
     }
 
     // ==================== ANNULATION RÈGLEMENT CRÉDIT ====================

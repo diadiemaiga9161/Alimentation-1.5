@@ -12,6 +12,7 @@ public class FactureRequest {
     private String clientAdresse;
     private Boolean creerClient;
     private String notes;
+    private String chauffeur;
     private Long utilisateurId;
     private Double remiseGlobale;
     private String typeRemiseGlobale;

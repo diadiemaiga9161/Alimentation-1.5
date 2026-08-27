@@ -24,6 +24,11 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE v.vendeur.id = :vendeurId ORDER BY v.dateVente DESC")
     List<Vente> findByVendeurId(@Param("vendeurId") Long vendeurId);
 
+    // Traçabilité comptable : ventes annulées dans la période, pour afficher le bénéfice
+    // qu'elles représentaient et qui/pourquoi elles ont été annulées (page Bénéfices).
+    @Query("SELECT v FROM Vente v WHERE v.annulee = true AND v.dateAnnulation >= :debut AND v.dateAnnulation <= :fin ORDER BY v.dateAnnulation DESC")
+    List<Vente> findVentesAnnuleesByDateAnnulationRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
     @Query("SELECT v FROM Vente v WHERE v.estCredit = true AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findAllCredits();
 
@@ -59,13 +64,23 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @Query("SELECT v FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findAllNonAnnulees();
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    // Export de données : contrairement à findAllNonAnnulees(), inclut aussi les ventes
+    // annulées. Même tri (dateVente DESC) pour garder une cohérence avec le comportement
+    // par défaut de GET /api/ventes.
+    @Query("SELECT v FROM Vente v ORDER BY v.dateVente DESC")
+    List<Vente> findAllOrderByDateVenteDesc();
+
+    // BUG FIX (audit comptable) : ces SUM(v.montantTotal) comptaient la marchandise
+    // retournée comme si elle était toujours vendue (le retour ne mettait à jour que le
+    // stock/la caisse, jamais le CA). On soustrait désormais montantMarchandiseRetournee
+    // (valeur totale retournée, toute vente confondue) pour un CA net des retours.
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireJournalier(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireHebdomadaire(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.estCredit IS NULL OR v.estCredit = false) AND (v.annulee IS NULL OR v.annulee = false)")
     Double getChiffreAffaireMensuel(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
     @Query("SELECT COALESCE(SUM(v.montantRestant), 0) FROM Vente v WHERE v.estCredit = true AND (v.creditRegle IS NULL OR v.creditRegle = false) AND (v.annulee IS NULL OR v.annulee = false)")
@@ -76,14 +91,17 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
 
     Optional<Vente> findByClientRequestId(String clientRequestId);
 
-    @Query("SELECT COALESCE(SUM(v.beneficeTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.beneficeTotal - COALESCE(v.beneficeRetourne, 0)), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getBeneficeTotalByDateRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getCAByDateRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
     @Query("SELECT COUNT(v) FROM Vente v WHERE v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Long countByDateRange(@Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
+
+    @Query("SELECT COUNT(v) FROM Vente v WHERE v.vendeur.id = :vendeurId AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
+    Long countByVendeurIdAndDateRange(@Param("vendeurId") Long vendeurId, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
     @Query("SELECT v FROM Vente v WHERE v.modePaiement = :mode AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false) ORDER BY v.dateVente DESC")
     List<Vente> findByModePaiementAndDateRange(@Param("mode") ModePaiement mode, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
@@ -99,7 +117,7 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
      * CA agrégé par jour sur une période — utilisé pour la régression linéaire et l'EMA.
      * Retourne [java.sql.Date jour, BigDecimal ca].
      */
-    @Query(value = "SELECT DATE(v.date_vente) AS jour, COALESCE(SUM(v.montant_total), 0) AS ca " +
+    @Query(value = "SELECT DATE(v.date_vente) AS jour, COALESCE(SUM(v.montant_total - COALESCE(v.montant_marchandise_retournee, 0)), 0) AS ca " +
                    "FROM ventes v " +
                    "WHERE v.date_vente >= :debut AND v.date_vente <= :fin " +
                    "AND (v.annulee IS NULL OR v.annulee = 0) " +
@@ -113,7 +131,7 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
      * Retourne [clientId, dernierAchat (Timestamp), nbAchats (Long), montantTotal (BigDecimal)].
      */
     @Query(value = "SELECT v.client_id, MAX(v.date_vente) AS dernierAchat, COUNT(*) AS nbAchats, " +
-                   "COALESCE(SUM(v.montant_total), 0) AS montantTotal " +
+                   "COALESCE(SUM(v.montant_total - COALESCE(v.montant_marchandise_retournee, 0)), 0) AS montantTotal " +
                    "FROM ventes v " +
                    "WHERE v.client_id IS NOT NULL " +
                    "AND (v.annulee IS NULL OR v.annulee = 0) " +
@@ -148,16 +166,16 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
            nativeQuery = true)
     List<Object[]> findVelociteProduits(@Param("debut") LocalDateTime debut);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.modePaiement = :mode AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.modePaiement = :mode AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getTotalByModePaiementAndDateRange(@Param("mode") ModePaiement mode, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
     @Query("SELECT COUNT(v) FROM Vente v WHERE v.modePaiement = :mode AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Long countByModePaiementAndDateRange(@Param("mode") ModePaiement mode, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE v.modePaiement IN :modes AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE v.modePaiement IN :modes AND v.dateVente >= :debut AND v.dateVente <= :fin AND (v.annulee IS NULL OR v.annulee = false)")
     Double getTotalMobileMoneyByDateRange(@Param("modes") List<ModePaiement> modes, @Param("debut") LocalDateTime debut, @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(v.montantTotal), 0) FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) AND v.modePaiement NOT IN :modes")
+    @Query("SELECT COALESCE(SUM(v.montantTotal - COALESCE(v.montantMarchandiseRetournee, 0)), 0) FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) AND v.modePaiement NOT IN :modes")
     Double getTotalEspecesHorsMobileMoney(@Param("modes") List<ModePaiement> modes);
 
     @Query("SELECT COUNT(v) FROM Vente v WHERE (v.annulee IS NULL OR v.annulee = false) AND v.dateVente >= :debut AND v.dateVente <= :fin AND v.estCredit = false")
@@ -222,7 +240,7 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
      * Retourne [heure (Integer 0-23), nbVentes (Long), ca (BigDecimal)].
      */
     @Query(value = "SELECT HOUR(v.date_vente) AS heure, COUNT(v.id) AS nbVentes, " +
-                   "COALESCE(SUM(v.montant_total), 0) AS ca " +
+                   "COALESCE(SUM(v.montant_total - COALESCE(v.montant_marchandise_retournee, 0)), 0) AS ca " +
                    "FROM ventes v " +
                    "WHERE DATE(v.date_vente) = CURDATE() " +
                    "AND (v.annulee IS NULL OR v.annulee = 0) " +
@@ -235,7 +253,7 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
      * Répartition des ventes par vendeur sur une période — pour l'assistant IA.
      * Retourne [nomComplet (String), nbVentes (Long), ca (BigDecimal)].
      */
-    @Query(value = "SELECT u.nom_complet AS nom, COUNT(v.id) AS nbVentes, COALESCE(SUM(v.montant_total), 0) AS ca " +
+    @Query(value = "SELECT u.nom_complet AS nom, COUNT(v.id) AS nbVentes, COALESCE(SUM(v.montant_total - COALESCE(v.montant_marchandise_retournee, 0)), 0) AS ca " +
                    "FROM ventes v JOIN utilisateurs u ON v.vendeur_id = u.id " +
                    "WHERE v.date_vente >= :debut AND v.date_vente <= :fin " +
                    "AND (v.annulee IS NULL OR v.annulee = 0) " +

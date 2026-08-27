@@ -31,3 +31,17 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Config locale de dev (identifiants MySQL local, jamais les vrais secrets)
+application-local.properties
+/config/
+
+# Logs de crash JVM (HotSpot) — s'accumulaient par dizaines, jamais utiles
+# a versionner
+hs_err_pid*.log
+replay_pid*.log
+
+# Logs applicatifs (rotation locale au jour le jour, jamais a versionner)
+logs/
+backend-local-stdout.log
+backend-local-stderr.log

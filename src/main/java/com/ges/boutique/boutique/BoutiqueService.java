@@ -79,6 +79,10 @@ public class BoutiqueService {
             existingBoutique.setActif(boutique.getActif());
         }
 
+        if (boutique.getCouleurPrimaire() != null) {
+            existingBoutique.setCouleurPrimaire(boutique.getCouleurPrimaire());
+        }
+
         // Important :
         // Le logo est déjà géré par /api/boutique/upload-logo.
         // Ici on ne supprime jamais le logo existant.

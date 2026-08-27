@@ -107,6 +107,32 @@ public class AvanceFournisseurServiceImpl implements AvanceFournisseurService {
 
     @Override
     @Transactional
+    public AvanceFournisseur crediterExcedentPaiement(Long fournisseurId, Double montant, String motif, Long utilisateurId) {
+        if (montant == null || montant <= 0.01) return null;
+
+        Fournisseur fournisseur = fournisseurRepository.findById(fournisseurId)
+                .orElseThrow(() -> new RessourceIntrouvableException("Fournisseur introuvable"));
+
+        // PAS de débit caisse/compte ici : l'argent est déjà sorti au moment du paiement
+        // fournisseur d'origine (payerFournisseur). Ceci ne fait que matérialiser l'excédent
+        // en avance réutilisable, pour ne pas le perdre silencieusement.
+        AvanceFournisseur avance = new AvanceFournisseur();
+        avance.setFournisseur(fournisseur);
+        avance.setMontant(montant);
+        avance.setMontantUtilise(0.0);
+        avance.setMontantDisponible(montant);
+        avance.setMotif(motif);
+        avance.setSourceFinancement("TROP_PERCU");
+        avance.setUtilisateurId(utilisateurId);
+
+        AvanceFournisseur saved = avanceRepository.save(avance);
+        log.info("Excédent de paiement crédité en avance fournisseur: {} F pour {} (motif: {})",
+                montant, fournisseur.getNom(), motif);
+        return saved;
+    }
+
+    @Override
+    @Transactional
     public void annulerUtilisationAvance(Long fournisseurId, Double montantAAnnuler) {
         if (montantAAnnuler == null || montantAAnnuler <= 0) {
             log.info("Aucun montant à annuler pour l'avance du fournisseur {}", fournisseurId);

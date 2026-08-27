@@ -46,6 +46,7 @@ public class FactureServiceImpl implements FactureService {
 
         Facture facture = new Facture();
         facture.setNotes(request.getNotes());
+        facture.setChauffeur(request.getChauffeur());
 
         if (request.getUtilisateurId() != null) {
             Utilisateur utilisateur = utilisateurRepository.findById(request.getUtilisateurId())
@@ -302,6 +303,7 @@ public class FactureServiceImpl implements FactureService {
         facture.setClientTelephone(request.getClientTelephone());
         facture.setClientAdresse(request.getClientAdresse());
         facture.setNotes(request.getNotes());
+        facture.setChauffeur(request.getChauffeur());
 
         if (request.getClientId() != null) {
             Client client = clientRepository.findById(request.getClientId())
