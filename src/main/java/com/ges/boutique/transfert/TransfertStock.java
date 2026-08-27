@@ -61,10 +61,16 @@ public class TransfertStock {
     @Column(name = "motif_rejet", columnDefinition = "TEXT")
     private String motifRejet;
 
-    @OneToMany(mappedBy = "transfert", cascade = CascadeType.ALL, orphanRemoval = true)
+    // fetch = EAGER indispensable ici : spring.jpa.open-in-view=false ferme la
+    // session Hibernate avant la serialisation Jackson, et JacksonConfig
+    // desactive FORCE_LAZY_LOADING (Hibernate6Module) -> une collection LAZY
+    // non initialisee revient silencieusement vide ([]) au lieu de charger ou
+    // de planter. Meme correctif deja applique sur Vente/Commande/Facture/
+    // RetourVente pour la meme raison, oublie ici jusqu'a present.
+    @OneToMany(mappedBy = "transfert", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<LigneTransfert> lignes = new ArrayList<>();
 
-    @OneToMany(mappedBy = "transfert", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "transfert", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @OrderBy("dateAction DESC")
     private List<HistoriqueTransfert> historique = new ArrayList<>();
 

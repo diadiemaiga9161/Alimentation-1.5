@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8"/>
+  <title>Ges Lafia</title>
+
+  <base href="/mobile/"/>
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="manifest.webmanifest"/>
+
+  <!-- Couleur de thème -->
+  <meta name="theme-color" content="#081648"/>
+  <meta name="msapplication-TileColor" content="#081648"/>
+  <meta name="msapplication-TileImage" content="assets/icons/icon-144x144.png"/>
+
+  <!-- Viewport -->
+  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="format-detection" content="telephone=no"/>
+  <meta name="msapplication-tap-highlight" content="no"/>
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Ges Lafia"/>
+
+  <!-- Icônes Apple -->
+  <link rel="apple-touch-icon" href="assets/icons/icon-152x152.png"/>
+  <link rel="apple-touch-icon" sizes="152x152" href="assets/icons/icon-152x152.png"/>
+  <link rel="apple-touch-icon" sizes="192x192" href="assets/icons/icon-192x192.png"/>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icon/favicon.png"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192x192.png"/>
+
+  <!-- SEO -->
+  <meta name="description" content="Ges Lafia — Application de gestion de boutique : ventes, stocks, clients, caisse"/>
+  <meta name="application-name" content="Ges Lafia"/>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+
+  <style>
+    #app-splash {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(145deg, #040e2e 0%, #081648 45%, #0f2878 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      transition: opacity 0.5s ease;
+      font-family: 'Inter', sans-serif;
+    }
+    #app-splash.hidden { opacity: 0; pointer-events: none; }
+
+    .spl-glow {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(26,86,219,0.25) 0%, transparent 70%);
+    }
+    .spl-glow-1 { width: 340px; height: 340px; top: -80px; right: -80px; }
+    .spl-glow-2 { width: 260px; height: 260px; bottom: -60px; left: -60px; }
+
+    .spl-logo-ring {
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #1a56db, #0a2d6b);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 12px rgba(26,86,219,0.15), 0 0 0 24px rgba(26,86,219,0.07), 0 20px 60px rgba(0,0,0,0.5);
+      margin-bottom: 28px;
+      position: relative;
+      animation: spl-logo-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      opacity: 0;
+    }
+    .spl-logo-ring::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, rgba(255,255,255,0.3), transparent 60%);
+    }
+    .spl-initials {
+      color: #fff;
+      font-size: 2.4rem;
+      font-weight: 900;
+      letter-spacing: -2px;
+      line-height: 1;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .spl-texts {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: spl-fade-up 0.5s ease 0.45s forwards;
+      opacity: 0;
+    }
+    .spl-company {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+    }
+    .spl-appname {
+      color: #fff;
+      font-size: 2rem;
+      font-weight: 900;
+      margin: 0 0 6px;
+      letter-spacing: -0.5px;
+    }
+    .spl-tagline {
+      color: rgba(255,255,255,0.45);
+      font-size: 0.78rem;
+      margin: 0 0 40px;
+      letter-spacing: 0.5px;
+    }
+
+    .spl-dots {
+      display: flex;
+      gap: 8px;
+    }
+    .spl-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.4);
+      animation: spl-pulse 1.4s infinite ease-in-out;
+    }
+    .spl-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .spl-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes spl-logo-in {
+      from { opacity: 0; transform: scale(0.75); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    @keyframes spl-fade-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spl-pulse {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40%            { transform: scale(1.1); opacity: 1; background: #1a56db; }
+    }
+  </style>
+<link rel="stylesheet" href="styles.863314d87dbeb6d9.css"></head>
+
+<body>
+  <app-root>
+    <div id="app-splash">
+      <div class="spl-glow spl-glow-1"></div>
+      <div class="spl-glow spl-glow-2"></div>
+      <div class="spl-logo-ring">
+        <span class="spl-initials">GL</span>
+      </div>
+      <div class="spl-texts">
+        <p class="spl-company">Maiga Consulting</p>
+        <h1 class="spl-appname">Ges Lafia</h1>
+        <p class="spl-tagline">Gestion de Boutique</p>
+      </div>
+      <div class="spl-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  </app-root>
+<script src="runtime.456e92a085c77853.js" type="module"></script><script src="polyfills.3818353e7d3192f4.js" type="module"></script><script src="main.6b2b30b1cc2ce8c5.js" type="module"></script></body>
+
+</html>
