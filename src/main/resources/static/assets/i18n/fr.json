@@ -88,6 +88,13 @@
     "ORDERS": "Commandes",
     "PARTNERS": "Partenaires"
   },
+  "SHOP": { "TITLE": "Boutique" },
+  "REPORT": { "TITLE": "Rapport" },
+  "ORDERS": { "TITLE": "Commandes" },
+  "CREDIT_PAYMENT": { "TITLE": "Règlement Crédits" },
+  "PROFILE_MENU": { "TITLE": "Profil" },
+  "DEBTS_MENU": { "TITLE": "Dettes" },
+  "SELLERS_MENU": { "TITLE": "Vendeurs" },
   "PROFILE": {
     "TITLE": "Mon Profil",
     "FULL_NAME": "Nom complet",

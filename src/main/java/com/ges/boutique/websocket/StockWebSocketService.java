@@ -65,4 +65,19 @@ public class StockWebSocketService {
             log.warn("Erreur diffusion transfert WebSocket vers boutique {}: {}", boutiqueId, e.getMessage());
         }
     }
+
+    /**
+     * Diffuse l'arrivée d'une commande passée depuis la vitrine publique sur
+     * /topic/commandes/{boutiqueId} — pour un popup instantané côté Angular/Ionic si
+     * l'appli est déjà ouverte. Ne remplace pas le contrôle "en attente" fait à
+     * l'ouverture (CommandeService.trouverVitrineEnAttente) : ce topic est juste le
+     * chemin "instantané", l'autre est le filet de sécurité si personne n'était connecté.
+     */
+    public void diffuserCommandeVitrine(Long boutiqueId, Object commande) {
+        try {
+            messagingTemplate.convertAndSend("/topic/commandes/" + boutiqueId, commande);
+        } catch (Exception e) {
+            log.warn("Erreur diffusion commande vitrine WebSocket vers boutique {}: {}", boutiqueId, e.getMessage());
+        }
+    }
 }

@@ -88,6 +88,13 @@
     "NOTIFICATIONS": "Xibaaray yi",
     "PARTNERS": "Asosie yi"
   },
+  "SHOP": { "TITLE": "Boutik bi" },
+  "REPORT": { "TITLE": "Rapoor bi" },
+  "ORDERS": { "TITLE": "Jënd-jëf yi" },
+  "CREDIT_PAYMENT": { "TITLE": "Dajal Xaalis" },
+  "PROFILE_MENU": { "TITLE": "Profil bi" },
+  "DEBTS_MENU": { "TITLE": "Ñaan yi" },
+  "SELLERS_MENU": { "TITLE": "Jaaykat yi" },
   "PROFILE": {
     "TITLE": "Sa profil",
     "FULL_NAME": "Tur bu dëgër",

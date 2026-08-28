@@ -376,7 +376,16 @@ public class TransfertService {
     @CacheEvict(value = "produits", allEntries = true)
     public TransfertStock accepter(Long id, String currentUser) {
         TransfertStock t = getById(id);
-        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION && t.getStatut() != StatutTransfert.EN_ATTENTE) {
+        // Un enregistrement "reçu" (créé par recevoir(), boutiqueDestUrl vide) qui s'est
+        // retrouvé en CONFIRME n'a jamais dû l'être : ce statut n'existe normalement que côté
+        // expéditeur. C'était le bouton "Confirmer" affiché à tort à la place d'"Accepter" sur
+        // l'onglet "Tous" (cf. transferts.component.html) — sans cette dérogation, le transfert
+        // reste bloqué pour toujours car ACCEPTE n'est plus atteignable depuis CONFIRME.
+        boolean recuConfirmeParErreur = t.getStatut() == StatutTransfert.CONFIRME
+                && (t.getBoutiqueDestUrl() == null || t.getBoutiqueDestUrl().isBlank());
+        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION
+                && t.getStatut() != StatutTransfert.EN_ATTENTE
+                && !recuConfirmeParErreur) {
             throw new IllegalStateException("Ce transfert ne peut pas être accepté dans son état actuel");
         }
 
@@ -441,7 +450,13 @@ public class TransfertService {
     @Transactional
     public TransfertStock rejeter(Long id, String motif, String currentUser) {
         TransfertStock t = getById(id);
-        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION && t.getStatut() != StatutTransfert.EN_ATTENTE) {
+        // Même dérogation que dans accepter() : un "reçu" confirmé par erreur (bouton du mauvais
+        // onglet) doit rester rejetable, sinon il reste bloqué indéfiniment.
+        boolean recuConfirmeParErreur = t.getStatut() == StatutTransfert.CONFIRME
+                && (t.getBoutiqueDestUrl() == null || t.getBoutiqueDestUrl().isBlank());
+        if (t.getStatut() != StatutTransfert.EN_ATTENTE_CONFIRMATION
+                && t.getStatut() != StatutTransfert.EN_ATTENTE
+                && !recuConfirmeParErreur) {
             throw new IllegalStateException("Ce transfert ne peut pas être rejeté dans son état actuel");
         }
         t.setStatut(StatutTransfert.REJETE);

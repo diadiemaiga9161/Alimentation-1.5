@@ -88,6 +88,13 @@
     "NOTIFICATIONS": "Notificações",
     "PARTNERS": "Parceiros"
   },
+  "SHOP": { "TITLE": "Loja" },
+  "REPORT": { "TITLE": "Relatório" },
+  "ORDERS": { "TITLE": "Encomendas" },
+  "CREDIT_PAYMENT": { "TITLE": "Liquidação de Créditos" },
+  "PROFILE_MENU": { "TITLE": "Perfil" },
+  "DEBTS_MENU": { "TITLE": "Dívidas" },
+  "SELLERS_MENU": { "TITLE": "Vendedores" },
   "PROFILE": {
     "TITLE": "Meu Perfil",
     "FULL_NAME": "Nome completo",

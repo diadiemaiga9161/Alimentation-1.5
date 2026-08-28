@@ -48,6 +48,13 @@
     "REPORT": "Report", "PROMO": "Promotions", "CREDIT_PAYMENT": "Credit Settlement",
     "ORDERS": "Orders", "NOTIFICATIONS": "Notifications", "PARTNERS": "Partners"
   },
+  "SHOP": { "TITLE": "Shop" },
+  "REPORT": { "TITLE": "Report" },
+  "ORDERS": { "TITLE": "Orders" },
+  "CREDIT_PAYMENT": { "TITLE": "Credit Settlement" },
+  "PROFILE_MENU": { "TITLE": "Profile" },
+  "DEBTS_MENU": { "TITLE": "Debts" },
+  "SELLERS_MENU": { "TITLE": "Sellers" },
   "PROFILE": {
     "TITLE": "My Profile", "FULL_NAME": "Full name", "EMAIL": "Email",
     "PHONE": "Phone", "COUNTRY_CODE": "Country code", "PASSWORD": "New password",

@@ -53,7 +53,15 @@ public class VitrineServiceImpl implements VitrineService {
         dto.setNom(produit.getNom());
         dto.setCategorieNom(produit.getCategorie() != null ? produit.getCategorie().getNom() : null);
         dto.setPrixVente(produit.getPrixVente());
-        dto.setDisponible(produit.getQuantite() != null && produit.getQuantite() > 0);
+        int quantite = produit.getQuantite() != null ? produit.getQuantite() : 0;
+        dto.setDisponible(quantite > 0);
+        if (quantite <= 0) {
+            dto.setStatutStock("RUPTURE");
+        } else if (produit.estStockFaible()) {
+            dto.setStatutStock("STOCK_FAIBLE");
+        } else {
+            dto.setStatutStock("DISPONIBLE");
+        }
 
         Promotion promo = meilleurePromo(produit);
         if (promo != null) {

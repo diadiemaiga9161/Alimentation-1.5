@@ -21,6 +21,9 @@ public class VitrineProduitDto {
     private Double prixVente;
     private boolean disponible;
 
+    /** DISPONIBLE / STOCK_FAIBLE / RUPTURE — statut affiché au client, jamais la quantité exacte. */
+    private String statutStock;
+
     private boolean enPromotion;
     private String promotionTitre;
     private String promotionReduction;

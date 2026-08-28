@@ -67,6 +67,13 @@
     "REPORT": "تقرير", "PROMO": "العروض", "CREDIT_PAYMENT": "تسوية الائتمان",
     "ORDERS": "الطلبات", "NOTIFICATIONS": "الإشعارات", "PARTNERS": "الشركاء"
   },
+  "SHOP": { "TITLE": "المتجر" },
+  "REPORT": { "TITLE": "تقرير" },
+  "ORDERS": { "TITLE": "الطلبات" },
+  "CREDIT_PAYMENT": { "TITLE": "تسوية الائتمان" },
+  "PROFILE_MENU": { "TITLE": "الملف الشخصي" },
+  "DEBTS_MENU": { "TITLE": "الديون" },
+  "SELLERS_MENU": { "TITLE": "البائعون" },
   "PROFILE": {
     "TITLE": "ملفي الشخصي",
     "FULL_NAME": "الاسم الكامل",

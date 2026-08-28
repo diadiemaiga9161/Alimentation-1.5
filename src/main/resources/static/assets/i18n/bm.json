@@ -86,6 +86,13 @@
     "NOTIFICATIONS": "Ɲɛfɔliw",
     "PARTNERS": "Sigidaw"
   },
+  "SHOP": { "TITLE": "Boutique" },
+  "REPORT": { "TITLE": "Sɛbɛn" },
+  "ORDERS": { "TITLE": "Latigɛ" },
+  "CREDIT_PAYMENT": { "TITLE": "Juru Sara" },
+  "PROFILE_MENU": { "TITLE": "I ka baara" },
+  "DEBTS_MENU": { "TITLE": "Dɔnni" },
+  "SELLERS_MENU": { "TITLE": "Feereliw" },
   "PROFILE": {
     "TITLE": "I ka baara",
     "FULL_NAME": "Tɔgɔ dafalen",

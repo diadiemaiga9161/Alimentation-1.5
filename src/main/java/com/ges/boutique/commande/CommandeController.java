@@ -1,8 +1,11 @@
 package com.ges.boutique.commande;
 
+import com.ges.boutique.utilisateur.Utilisateur;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -15,6 +18,12 @@ import java.util.Map;
 public class CommandeController {
 
     private final CommandeService commandeService;
+
+    private Long getUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Utilisateur u) return u.getId();
+        return null;
+    }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -32,6 +41,17 @@ public class CommandeController {
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     public ResponseEntity<List<Commande>> getByStatut(@PathVariable StatutCommande statut) {
         return ResponseEntity.ok(commandeService.findByStatut(statut));
+    }
+
+    /**
+     * Commandes vitrine pas encore traitées — appelé à l'ouverture de l'appli/connexion
+     * sur les 3 plateformes (pas seulement via le WebSocket temps réel) pour que personne
+     * ne rate une commande arrivée pendant qu'il n'était pas connecté.
+     */
+    @GetMapping("/vitrine-en-attente")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    public ResponseEntity<List<Commande>> getVitrineEnAttente() {
+        return ResponseEntity.ok(commandeService.trouverVitrineEnAttente());
     }
 
     @PostMapping
@@ -59,7 +79,7 @@ public class CommandeController {
     @PostMapping("/{id}/valider")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
     public ResponseEntity<Map<String, Object>> valider(@PathVariable Long id) {
-        Commande commande = commandeService.valider(id);
+        Commande commande = commandeService.valider(id, getUserId());
         Map<String, Object> resp = new HashMap<>();
         resp.put("success", true);
         resp.put("message", "Commande validée — vente créée N°" + commande.getVenteId());

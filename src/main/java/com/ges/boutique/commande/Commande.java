@@ -28,9 +28,18 @@ public class Commande {
     @Column(nullable = false, unique = true)
     private String numeroCommande;
 
+    // Nullable : une commande venue de la vitrine publique n'a pas encore de vendeur
+    // au moment de la création — il n'est assigné qu'à la validation (cf. valider()).
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "vendeur_id", nullable = false)
+    @JoinColumn(name = "vendeur_id")
     private Utilisateur vendeur;
+
+    // columnDefinition avec DEFAULT : ddl-auto=update va ajouter cette colonne NOT NULL sur
+    // des tables "commandes" qui ont déjà des lignes existantes (boutiques en prod) — sans
+    // valeur par défaut au niveau SQL, cet ALTER TABLE échouerait au démarrage.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origine", nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'MAGASIN'")
+    private OrigineCommande origine = OrigineCommande.MAGASIN;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "client_id")

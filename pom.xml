@@ -83,6 +83,20 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Migrations automatiques (db/migration/V*.sql) : jusqu'ici ces scripts
+		     n'étaient que des références à appliquer à la main sur chaque boutique
+		     (ddl-auto=update ajoute les colonnes tout seul, mais ne relâche jamais
+		     une contrainte existante — cf. V105, vendeur_id). Avec Flyway, un simple
+		     redémarrage applique automatiquement tout nouveau script V*.sql. -->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-mysql</artifactId>
+		</dependency>
+
 		<!-- JWT -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>

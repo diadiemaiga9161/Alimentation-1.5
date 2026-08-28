@@ -1,0 +1,15 @@
+-- Une commande déposée depuis la vitrine publique (sans connexion) n'a pas encore
+-- de vendeur au moment de sa création — il n'est assigné qu'à la validation. La
+-- colonne vendeur_id était NOT NULL depuis toujours ; Hibernate (ddl-auto=update)
+-- n'assouplit JAMAIS une contrainte existante (il ne fait qu'ajouter des colonnes),
+-- donc ce changement doit être appliqué manuellement sur chaque boutique — confirmé
+-- en le faisant sur la base "demo" (alimentation6) : sans ça, aucune commande vitrine
+-- ne peut être enregistrée ("Column 'vendeur_id' cannot be null").
+--
+-- La colonne "origine", elle, n'a PAS besoin de ligne ici : Hibernate l'ajoute tout
+-- seul au premier redémarrage avec le nouveau jar (avec son DEFAULT 'MAGASIN' au
+-- niveau SQL, cf. columnDefinition dans Commande.java) — confirmé également sur
+-- "demo", où elle existait déjà avant même d'exécuter ce script.
+-- (Note : "ADD COLUMN IF NOT EXISTS" n'existe pas en MySQL, seulement en MariaDB —
+-- si un jour cette colonne doit être ajoutée à la main, utiliser un ADD COLUMN simple.)
+ALTER TABLE commandes MODIFY COLUMN vendeur_id BIGINT NULL;

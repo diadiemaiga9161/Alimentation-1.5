@@ -88,6 +88,13 @@
     "NOTIFICATIONS": "Sanarwa",
     "PARTNERS": "Abokan hulɗa"
   },
+  "SHOP": { "TITLE": "Shago" },
+  "REPORT": { "TITLE": "Rahoto" },
+  "ORDERS": { "TITLE": "Umarni" },
+  "CREDIT_PAYMENT": { "TITLE": "Biyan Bashi" },
+  "PROFILE_MENU": { "TITLE": "Bayanan kai" },
+  "DEBTS_MENU": { "TITLE": "Bashi" },
+  "SELLERS_MENU": { "TITLE": "Masu siyarwa" },
   "PROFILE": {
     "TITLE": "Bayanan na",
     "FULL_NAME": "Cikakken suna",

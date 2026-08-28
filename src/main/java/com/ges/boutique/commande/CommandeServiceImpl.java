@@ -3,19 +3,24 @@ package com.ges.boutique.commande;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.notification.NotificationPersistanceService;
 import com.ges.boutique.produit.Produit;
 import com.ges.boutique.produit.ProduitRepository;
 import com.ges.boutique.utilisateur.Utilisateur;
 import com.ges.boutique.utilisateur.UtilisateurRepository;
 import com.ges.boutique.vente.*;
+import com.ges.boutique.vitrine.VitrineCommandeRequest;
+import com.ges.boutique.websocket.StockWebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -27,6 +32,10 @@ public class CommandeServiceImpl implements CommandeService {
     private final ClientRepository clientRepository;
     private final ProduitRepository produitRepository;
     private final VenteService venteService;
+    private final NotificationPersistanceService notifService;
+    private final StockWebSocketService stockWebSocketService;
+
+    private static final Long BOUTIQUE_ID = 1L;
 
     @Override
     @Transactional
@@ -84,10 +93,19 @@ public class CommandeServiceImpl implements CommandeService {
 
     @Override
     @Transactional
-    public Commande valider(Long id) {
+    public Commande valider(Long id, Long currentUserId) {
         Commande commande = findById(id);
         if (commande.getStatut() == StatutCommande.VALIDEE) {
             throw new IllegalStateException("Cette commande est déjà validée");
+        }
+
+        // Une commande venue de la vitrine n'a pas de vendeur (personne ne l'a prise en
+        // magasin) — Vente.vendeur est NOT NULL, donc sans ceci venteService.creerVente()
+        // échouait toujours avec "Le vendeur est requis" et une commande vitrine ne
+        // pouvait jamais être validée. Celui qui clique "Valider" devient le vendeur de
+        // référence pour la vente générée.
+        if (commande.getVendeur() == null && currentUserId != null) {
+            utilisateurRepository.findById(currentUserId).ifPresent(commande::setVendeur);
         }
 
         // Construire une VenteRequest depuis la commande
@@ -201,6 +219,96 @@ public class CommandeServiceImpl implements CommandeService {
             restant -= paiement;
         }
         return commandeRepository.saveAll(commandes);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "produits", allEntries = true)
+    public Commande creerDepuisVitrine(VitrineCommandeRequest request) {
+        if (request.getLignes() == null || request.getLignes().isEmpty()) {
+            throw new IllegalArgumentException("La commande doit contenir au moins un produit");
+        }
+        if (request.getClientNom() == null || request.getClientNom().isBlank()
+                || request.getClientTelephone() == null || request.getClientTelephone().isBlank()) {
+            throw new IllegalArgumentException("Nom et téléphone sont obligatoires");
+        }
+
+        Commande commande = new Commande();
+        commande.setStatut(StatutCommande.BROUILLON);
+        commande.setOrigine(OrigineCommande.VITRINE);
+        commande.setVendeur(null);
+        commande.setNotes(request.getNotes());
+        commande.setEstCredit(false);
+        commande.setMontantVerse(0.0);
+        // Pas de paiement en ligne : le mode réel n'est connu qu'à la remise. ESPECES
+        // par défaut (venteService.creerVente() exige un mode non nul pour valider) —
+        // la boutique peut le corriger via "Modifier" avant de valider si le client
+        // paie finalement par Mobile Money, carte, etc.
+        commande.setModePaiement(ModePaiement.ESPECES);
+
+        // Client existant (même numéro) ou nouvelle fiche — jamais de doublon, jamais
+        // de liste séparée : la personne rejoint la même liste Clients que tout le monde.
+        Client client = clientRepository.findByNumeroTelephone(request.getClientTelephone().trim())
+                .orElseGet(() -> {
+                    Client nouveau = new Client();
+                    nouveau.setNom(request.getClientNom().trim());
+                    nouveau.setPrenom(request.getClientPrenom() != null ? request.getClientPrenom().trim() : "");
+                    nouveau.setNumeroTelephone(request.getClientTelephone().trim());
+                    nouveau.setDateCreation(LocalDateTime.now());
+                    return clientRepository.save(nouveau);
+                });
+        commande.setClient(client);
+        commande.setClientNom(client.getNom());
+        commande.setClientPrenom(client.getPrenom());
+        commande.setClientTelephone(client.getNumeroTelephone());
+
+        List<LigneCommande> lignes = new ArrayList<>();
+        for (VitrineCommandeRequest.Ligne lr : request.getLignes()) {
+            if (lr.getQuantite() == null || lr.getQuantite() <= 0) continue;
+            Produit produit = produitRepository.findById(lr.getProduitId())
+                    .orElseThrow(() -> new RessourceIntrouvableException("Produit non trouvé: " + lr.getProduitId()));
+            if (produit.getQuantite() == null || produit.getQuantite() <= 0) {
+                throw new IllegalStateException("\"" + produit.getNom() + "\" n'est plus disponible");
+            }
+            LigneCommande ligne = new LigneCommande();
+            ligne.setCommande(commande);
+            ligne.setProduit(produit);
+            ligne.setQuantite(lr.getQuantite());
+            ligne.setPrixUnitaire(produit.getPrixVente());
+            ligne.setPrixAchat(produit.getPrixAchat());
+            ligne.calculer();
+            lignes.add(ligne);
+        }
+        if (lignes.isEmpty()) {
+            throw new IllegalArgumentException("Aucun produit valide dans la commande");
+        }
+        commande.setLignes(lignes);
+        commande.recalculer();
+
+        Commande saved = commandeRepository.save(commande);
+
+        // Notification persistée (visible dans la cloche) + WebSocket temps réel (si l'appli
+        // est déjà ouverte, ça arrive instantanément ; sinon la personne la verra en rouvrant
+        // l'appli via le contrôle "commandes vitrine en attente" fait à l'ouverture — cf.
+        // trouverVitrineEnAttente(), appelé par les 3 plateformes au démarrage/connexion).
+        notifService.creer("COMMANDE_VITRINE", "Nouvelle commande en ligne",
+                "Commande " + saved.getNumeroCommande() + " de " + client.getNom() + " " + client.getPrenom()
+                        + " (" + lignes.size() + " produit(s))", "/pages/commandes");
+        stockWebSocketService.diffuserCommandeVitrine(BOUTIQUE_ID, Map.of(
+                "type", "COMMANDE_VITRINE",
+                "commandeId", saved.getId(),
+                "numeroCommande", saved.getNumeroCommande(),
+                "clientNom", client.getNom() + " " + client.getPrenom(),
+                "timestamp", System.currentTimeMillis()
+        ));
+
+        return saved;
+    }
+
+    @Override
+    public List<Commande> trouverVitrineEnAttente() {
+        return commandeRepository.findByOrigineAndStatutOrderByDateCommandeDesc(
+                OrigineCommande.VITRINE, StatutCommande.BROUILLON);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
