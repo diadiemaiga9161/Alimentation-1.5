@@ -77,6 +77,26 @@ public class BoutiqueController {
         return modifierBoutique(boutique);
     }
 
+    // ==================== Fonctionnalités (réservé super admin) ====================
+
+    // Pas un rôle séparé : n'importe quel compte ADMIN existant peut être promu
+    // "super admin" via le flag super_admin en base (voir Utilisateur.superAdmin).
+    // Un ADMIN classique (flag à false) reçoit un 403 ici comme un VENDEUR.
+    @PutMapping("/fonctionnalites")
+    @PreAuthorize("hasRole('ADMIN') and authentication.principal.superAdmin")
+    @Operation(summary = "Activer/désactiver les fonctionnalités de la boutique (Transferts, Vitrine...) — réservé au super admin")
+    public ResponseEntity<Map<String, Object>> modifierFonctionnalites(@RequestBody FonctionnalitesRequest request) {
+        Boutique boutique = boutiqueService.modifierFonctionnalites(
+                request.getFeatureTransfertsActif(),
+                request.getFeatureVitrineActif()
+        );
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Fonctionnalités mises à jour avec succès");
+        response.put("boutique", boutique);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping(value = "/upload-logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Uploader le logo de la boutique (PNG, JPG, SVG — max 2 Mo)")

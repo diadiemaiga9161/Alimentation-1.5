@@ -337,6 +337,27 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle fonctionnalité désactivée par le super admin (@RequireFeature)
+     */
+    @ExceptionHandler(FonctionnaliteDesactiveeException.class)
+    public ResponseEntity<Map<String, Object>> handleFonctionnaliteDesactivee(
+            FonctionnaliteDesactiveeException ex,
+            WebRequest request) {
+
+        log.warn("Fonctionnalité désactivée: {}", ex.getMessage());
+
+        Map<String, Object> body = createErrorBody(
+                HttpStatus.FORBIDDEN,
+                "Fonctionnalité désactivée",
+                ex.getMessage(),
+                request.getDescription(false)
+        );
+        body.put(ERROR_CODE, "FEATURE_DISABLED");
+
+        return new ResponseEntity<>(body, HttpStatus.FORBIDDEN);
+    }
+
+    /**
      * Handle JWT exceptions
      */
     @ExceptionHandler(JwtException.class)

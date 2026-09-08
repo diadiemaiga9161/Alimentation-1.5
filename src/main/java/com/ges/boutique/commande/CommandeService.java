@@ -7,7 +7,8 @@ import java.util.List;
 public interface CommandeService {
     Commande creer(CommandeRequest request);
     Commande modifier(Long id, CommandeRequest request);
-    Commande valider(Long id, Long currentUserId);
+    /** infosLivraison est optionnel (peut être null) — une commande retirée en magasin n'a besoin d'aucun de ses champs. */
+    Commande valider(Long id, Long currentUserId, ValidationCommandeRequest infosLivraison);
     void supprimer(Long id);
     Commande findById(Long id);
     List<Commande> findAll();

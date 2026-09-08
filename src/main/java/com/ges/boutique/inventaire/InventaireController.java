@@ -19,6 +19,14 @@ import java.util.Map;
 @Tag(name = "Inventaire", description = "Gestion de l'inventaire")
 public class InventaireController {
 
+    // Expression répétée sur les endpoints de LECTURE ci-dessous : l'admin y a toujours
+    // accès, le vendeur seulement si l'admin de la boutique lui a accordé la permission
+    // CleVendeur.INVENTAIRE_LECTURE (voir com.ges.boutique.permission — décision normale
+    // de la boutique, sans rapport avec le super admin). Les 3 endpoints d'écriture plus
+    // bas (entrée/sortie/ajustement) restent volontairement réservés à l'ADMIN seul.
+    private static final String LECTURE_AUTORISEE =
+            "hasRole('ADMIN') or (hasRole('VENDEUR') and @permissionVendeurService.estActive(T(com.ges.boutique.permission.CleVendeur).INVENTAIRE_LECTURE))";
+
     private final InventaireService inventaireService;
 
     @PostMapping("/entree")
@@ -77,14 +85,14 @@ public class InventaireController {
     }
 
     @GetMapping("/historique/produit/{produitId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir l'historique d'un produit")
     public ResponseEntity<List<MouvementStock>> obtenirHistoriqueProduit(@PathVariable Long produitId) {
         return ResponseEntity.ok(inventaireService.obtenirHistoriqueProduit(produitId));
     }
 
     @GetMapping("/historique")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir les mouvements par date")
     public ResponseEntity<List<MouvementStock>> obtenirMouvementsParDate(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime debut,
@@ -93,28 +101,28 @@ public class InventaireController {
     }
 
     @GetMapping("/stock-faible")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir les produits en stock faible")
     public ResponseEntity<List<com.ges.boutique.produit.Produit>> obtenirProduitsStockFaible() {
         return ResponseEntity.ok(inventaireService.obtenirProduitsStockFaible());
     }
 
     @GetMapping("/statistiques")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir les statistiques de l'inventaire")
     public ResponseEntity<Map<String, Object>> obtenirStatistiquesInventaire() {
         return ResponseEntity.ok(inventaireService.obtenirStatistiquesInventaire());
     }
 
     @GetMapping("/mouvements")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir tous les mouvements de stock (du plus récent au plus ancien)")
     public ResponseEntity<List<MouvementStock>> obtenirTousMouvements() {
         return ResponseEntity.ok(inventaireService.obtenirTousMouvements());
     }
 
     @GetMapping("/sorties")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize(LECTURE_AUTORISEE)
     @Operation(summary = "Obtenir les sorties de stock avec filtres")
     public ResponseEntity<List<MouvementStock>> obtenirSorties(
             @RequestParam(required = false) String typeSortie,

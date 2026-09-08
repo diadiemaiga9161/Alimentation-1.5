@@ -1,5 +1,7 @@
 package com.ges.boutique.ia;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import com.ges.boutique.ia.dto.AnalyseIAResult;
 import com.ges.boutique.ia.dto.RecommandationIA;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.Optional;
 @RequestMapping("/api/ia")
 @RequiredArgsConstructor
 @Slf4j
+@RequireFeature(CleFonctionnalite.IA)
 public class IAController {
 
     private final AnalyseIAService analyseService;

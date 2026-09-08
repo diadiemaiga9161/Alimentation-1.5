@@ -11,6 +11,7 @@ import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -23,8 +24,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+// CORRECTIF SÉCURITÉ CRITIQUE : @EnableMethodSecurity manquait ici. Sans elle, TOUTES
+// les annotations @PreAuthorize de l'application (hasRole/hasAnyRole sur les contrôleurs)
+// sont silencieusement ignorées par Spring — vérifié en conditions réelles : un compte
+// VENDEUR pouvait modifier les paramètres boutique (PUT /api/boutique, @PreAuthorize
+// hasRole('ADMIN')) sans être bloqué. Seules les règles définies plus bas dans
+// authorizeHttpRequests() (URL par URL) étaient réellement appliquées.
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 

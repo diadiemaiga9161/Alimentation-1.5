@@ -1,5 +1,7 @@
 package com.ges.boutique.depot;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,12 +17,17 @@ public class DepotGardeController {
 
     private final DepotGardeService depotService;
 
+    // Seuls les NOUVEAUX dépôts sont bloqués si le super admin désactive cette
+    // fonctionnalité — retrait/clôture restent ouverts pour ne jamais empêcher un
+    // client de la boutique de récupérer son propre argent déjà déposé.
     @PostMapping
+    @RequireFeature(CleFonctionnalite.DEPOT_GARDE)
     public ResponseEntity<DepotGardeDto> creer(@RequestBody DepotGardeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(depotService.creerDepot(request));
     }
 
     @PutMapping("/{id}")
+    @RequireFeature(CleFonctionnalite.DEPOT_GARDE)
     public ResponseEntity<DepotGardeDto> modifier(@PathVariable Long id, @RequestBody DepotGardeRequest request) {
         return ResponseEntity.ok(depotService.modifierDepot(id, request));
     }

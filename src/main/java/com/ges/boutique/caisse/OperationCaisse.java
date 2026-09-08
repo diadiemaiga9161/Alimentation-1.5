@@ -46,7 +46,11 @@ public class OperationCaisse {
     @JoinColumn(name = "vente_id")
     private Vente vente;
 
+    // columnDefinition forcé en VARCHAR : même précaution que Vente.modePaiement (voir
+    // migration V107) — sans ça, Hibernate crée un ENUM MySQL natif figé qui plante dès
+    // qu'une nouvelle valeur (ex: WAVE_MONEY) est ajoutée à ModePaiementCaisse.
     @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement", columnDefinition = "VARCHAR(20)")
     private ModePaiementCaisse modePaiement;
 
     @Column(name = "reference_paiement")

@@ -1,5 +1,7 @@
 package com.ges.boutique.promo;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import java.util.Map;
 @RequestMapping("/api/promotions")
 @RequiredArgsConstructor
 @Tag(name = "Promotions", description = "Gestion des promotions et envoi WhatsApp")
+@RequireFeature(CleFonctionnalite.PROMOTIONS)
 public class PromotionController {
 
     private final PromotionService promotionService;

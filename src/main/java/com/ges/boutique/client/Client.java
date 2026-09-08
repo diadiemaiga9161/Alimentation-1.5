@@ -38,6 +38,11 @@ public class Client {
     @Column(nullable = false)
     private boolean partenaire = false;
 
+    // Solde de points fidélité (voir com.ges.boutique.fidelite) — colonne avec DEFAULT
+    // pour que ddl-auto=update l'ajoute proprement sur des tables clients déjà peuplées.
+    @Column(name = "points_fidelite", columnDefinition = "INT DEFAULT 0")
+    private Integer pointsFidelite = 0;
+
     @Column(name = "date_creation", nullable = false)
     private LocalDateTime dateCreation;
 

@@ -83,6 +83,11 @@ public class BoutiqueService {
             existingBoutique.setCouleurPrimaire(boutique.getCouleurPrimaire());
         }
 
+        // Les fonctionnalités activables/désactivables (feature_transferts_actif,
+        // feature_vitrine_actif) ne se modifient PAS ici : cet endpoint (PUT /api/boutique)
+        // est accessible à tout ADMIN de boutique, alors que ces réglages sont réservés
+        // au SUPER_ADMIN — voir modifierFonctionnalites() + PUT /api/boutique/fonctionnalites.
+
         // Important :
         // Le logo est déjà géré par /api/boutique/upload-logo.
         // Ici on ne supprime jamais le logo existant.
@@ -103,5 +108,21 @@ public class BoutiqueService {
 
     public Boutique creerBoutique(Boutique boutique) {
         return boutiqueRepository.save(boutique);
+    }
+
+    // Réservé au SUPER_ADMIN (voir BoutiqueController) : seul endroit où
+    // feature_transferts_actif / feature_vitrine_actif peuvent être modifiés.
+    public Boutique modifierFonctionnalites(Boolean featureTransfertsActif, Boolean featureVitrineActif) {
+        Boutique existingBoutique = obtenirBoutique();
+
+        if (featureTransfertsActif != null) {
+            existingBoutique.setFeatureTransfertsActif(featureTransfertsActif);
+        }
+
+        if (featureVitrineActif != null) {
+            existingBoutique.setFeatureVitrineActif(featureVitrineActif);
+        }
+
+        return boutiqueRepository.save(existingBoutique);
     }
 }

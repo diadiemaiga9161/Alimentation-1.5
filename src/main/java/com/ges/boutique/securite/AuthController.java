@@ -61,6 +61,7 @@ public class AuthController {
         response.put("telephone", utilisateur.getTelephone());
         response.put("id", utilisateur.getId());
         response.put("photo", utilisateur.getPhoto() != null ? utilisateur.getPhoto() : "");
+        response.put("superAdmin", utilisateur.isSuperAdmin());
 
         return ResponseEntity.ok(response);
     }
@@ -87,6 +88,7 @@ public class AuthController {
         response.put("role", utilisateur.getRole().name());
         response.put("actif", utilisateur.isActif());
         response.put("photo", utilisateur.getPhoto() != null ? utilisateur.getPhoto() : "");
+        response.put("superAdmin", utilisateur.isSuperAdmin());
 
         return ResponseEntity.ok(response);
     }

@@ -79,6 +79,24 @@ public class Boutique {
     @Enumerated(EnumType.STRING)
     private ModeOuverture modeOuverture = ModeOuverture.MANUEL;
 
+    // ── Fonctionnalités activables/désactivables (super admin) ────────────
+    // Vérifiées côté serveur (TransfertService, CommandeServiceImpl) — masquer
+    // le menu ne suffit jamais seul, c'est ce booléen qui bloque vraiment.
+    @Column(name = "feature_transferts_actif", columnDefinition = "TINYINT(1) DEFAULT 1")
+    private Boolean featureTransfertsActif = true;
+
+    @Column(name = "feature_vitrine_actif", columnDefinition = "TINYINT(1) DEFAULT 1")
+    private Boolean featureVitrineActif = true;
+
+    // ── Programme de fidélité (voir feature.CleFonctionnalite.PROGRAMME_FIDELITE) ──
+    // Taux configurables par l'admin de la boutique (Paramètres). Valeurs par défaut
+    // choisies pour être neutres si jamais activé sans configuration explicite.
+    @Column(name = "fidelite_montant_par_point", columnDefinition = "DOUBLE DEFAULT 100")
+    private Double fideliteMontantParPoint = 100.0;
+
+    @Column(name = "fidelite_point_valeur", columnDefinition = "DOUBLE DEFAULT 10")
+    private Double fidelitePointValeur = 10.0;
+
     @PrePersist
     protected void onCreate() {
         dateCreation = LocalDateTime.now();

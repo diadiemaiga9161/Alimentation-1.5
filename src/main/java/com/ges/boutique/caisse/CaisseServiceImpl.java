@@ -688,9 +688,10 @@ public class CaisseServiceImpl implements CaisseService {
         Caisse caisse = getCaisseOuverte();
         Double soldeAvant = caisse.getSoldeActuel();
 
-        // Orange Money et Moov Money ne touchent pas au solde de la caisse
+        // Orange Money, Moov Money et Wave ne touchent pas au solde de la caisse
+        // (l'argent ne rentre pas physiquement dans le tiroir-caisse)
         boolean estMobileMoney = modePaiement != null &&
-                (modePaiement.equals("ORANGE_MONEY") || modePaiement.equals("MOOV_MONEY"));
+                (modePaiement.equals("ORANGE_MONEY") || modePaiement.equals("MOOV_MONEY") || modePaiement.equals("WAVE_MONEY"));
 
         if (!estMobileMoney) {
             caisse.setSoldeActuel(soldeAvant + vente.getMontantTotal());
@@ -798,6 +799,14 @@ public class CaisseServiceImpl implements CaisseService {
             acompte.setMontantVerse(montantCashVerse);
             acompte.setMontantRestant(montantRestant);
             acompte.setVenteCreditId(vente.getId());
+            // BUG FIX : sans ce champ, cette opération de REGLEMENT_CREDIT restait avec un
+            // modePaiement null et le rapport de réconciliation caisse (getReconciliationVendeurs,
+            // filtre op.getModePaiement() == ESPECES) l'ignorait silencieusement — l'acompte
+            // rentrait bien dans le solde physique de la caisse mais n'était jamais réclamé au
+            // vendeur dans le rapport. On reprend le mode de paiement réel de la vente.
+            acompte.setModePaiement(vente.getModePaiement() != null
+                    ? ModePaiementCaisse.valueOf(vente.getModePaiement().name())
+                    : ModePaiementCaisse.ESPECES);
             acompte.setClientNom(nomClient);
             acompte.setClientTelephone(clientTelephone != null ? clientTelephone : vente.getClientTelephone());
             if (utilisateurId != null) {

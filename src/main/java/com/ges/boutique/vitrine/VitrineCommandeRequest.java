@@ -14,6 +14,7 @@ public class VitrineCommandeRequest {
     private String clientNom;
     private String clientPrenom;
     private String clientTelephone;
+    private String adresseLivraison;
     private String notes;
     private List<Ligne> lignes;
 

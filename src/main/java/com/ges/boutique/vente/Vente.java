@@ -66,8 +66,12 @@ public class Vente {
     @Column(name = "benefice_total", nullable = false)
     private Double beneficeTotal = 0.0;
 
+    // columnDefinition forcé en VARCHAR : sans ça, Hibernate crée un ENUM MySQL natif figé
+    // sur les valeurs de ModePaiement au moment de la création de la table, que
+    // ddl-auto=update n'élargit ensuite JAMAIS — toute nouvelle valeur ajoutée plus tard
+    // (ex: WAVE_MONEY) plante en écriture ("Data truncated for column"). Voir migration V107.
     @Enumerated(EnumType.STRING)
-    @Column(name = "mode_paiement", nullable = false)
+    @Column(name = "mode_paiement", nullable = false, columnDefinition = "VARCHAR(20)")
     private ModePaiement modePaiement;
 
     @Column(name = "reference_paiement")

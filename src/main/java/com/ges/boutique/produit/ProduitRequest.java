@@ -20,6 +20,7 @@ public class ProduitRequest {
     private String conditionsStockage;
     private Double poidsVolume;
     private String uniteMesure;
+    private String uniteBase;
     private boolean bio;
     private String origine;
     private String typeVente; // "DETAIL" ou "ENGROS"

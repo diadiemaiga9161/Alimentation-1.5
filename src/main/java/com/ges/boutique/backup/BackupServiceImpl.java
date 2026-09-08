@@ -1,5 +1,10 @@
 package com.ges.boutique.backup;
 
+import com.ges.boutique.feature.FonctionnaliteBoutique;
+import com.ges.boutique.feature.FonctionnaliteBoutiqueRepository;
+import com.ges.boutique.utilisateur.Utilisateur;
+import com.ges.boutique.utilisateur.UtilisateurRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,10 +22,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /**
@@ -40,11 +48,18 @@ import java.util.zip.GZIPOutputStream;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class BackupServiceImpl implements BackupService {
 
     private static final String DOSSIER_BACKUPS = "backups";
     private static final ZoneId FUSEAU = ZoneId.of("Africa/Abidjan");
     private static final DateTimeFormatter FORMAT_HORODATAGE = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss");
+
+    // Utilisés uniquement par restaurer() pour sauvegarder/réappliquer le statut super
+    // admin et l'état des fonctionnalités avancées autour d'une restauration — voir
+    // BackupService.restaurer pour le détail du principe.
+    private final UtilisateurRepository utilisateurRepository;
+    private final FonctionnaliteBoutiqueRepository fonctionnaliteBoutiqueRepository;
 
     @Value("${spring.datasource.url}")
     private String datasourceUrl;
@@ -62,10 +77,18 @@ public class BackupServiceImpl implements BackupService {
     private int retentionFichiers;
 
     /**
-     * Sauvegarde automatique quotidienne — voir backup.cron dans application.properties
-     * (par défaut : tous les jours à 3h du matin, fuseau Africa/Abidjan).
+     * Sauvegarde automatique — voir backup.cron dans application.properties (par défaut :
+     * un jour sur deux à 3h du matin, fuseau Africa/Abidjan — "1-31/2" = jours impairs du
+     * mois ; léger décalage aux changements de mois, sans conséquence pratique). Passé de
+     * quotidien à un jour sur deux pour réduire la charge sur le VPS qui héberge les 6
+     * boutiques en même temps.
+     *
+     * IMPORTANT : les fichiers application-boutiqueN.properties (1 à 6) ne définissent PAS
+     * backup.cron — c'est donc CETTE valeur par défaut ci-dessous qui s'applique réellement
+     * en production, pas la ligne dans application.properties (remplacée à la construction
+     * du jar par le contenu de application-boutiqueN.properties, qui ne la contient pas).
      */
-    @Scheduled(cron = "${backup.cron:0 0 3 * * *}")
+    @Scheduled(cron = "${backup.cron:0 0 3 1-31/2 * *}")
     public void sauvegardeAutomatiqueProgrammee() {
         log.info("Sauvegarde automatique programmée : démarrage");
         ResultatSauvegardeDto resultat = effectuerSauvegarde();
@@ -136,6 +159,89 @@ public class BackupServiceImpl implements BackupService {
         }
     }
 
+    // Pas de @Transactional ici : la restauration exécute mysql en processus externe,
+    // en dehors de toute session Hibernate — l'envelopper dans une transaction Spring
+    // n'aurait aucun sens (elle ne couvre pas ce que fait le processus externe) et
+    // risquerait de garder des entités en cache periment entre le snapshot et la
+    // réapplication. Chaque lecture/écriture JPA ci-dessous utilise sa propre
+    // transaction courte, indépendante des autres étapes.
+    @Override
+    public ResultatRestaurationDto restaurer(String nomFichier) {
+        if (nomFichier == null || nomFichier.contains("..") || nomFichier.contains("/") || nomFichier.contains("\\")
+                || !NOM_FICHIER_PATTERN.matcher(nomFichier).matches()) {
+            return ResultatRestaurationDto.echec("Nom de fichier de sauvegarde invalide : " + nomFichier);
+        }
+
+        Path dossierBackups = Paths.get(DOSSIER_BACKUPS).toAbsolutePath().normalize();
+        Path cheminFichier = dossierBackups.resolve(nomFichier).normalize();
+        if (!cheminFichier.startsWith(dossierBackups) || !Files.isRegularFile(cheminFichier)) {
+            return ResultatRestaurationDto.echec("Fichier de sauvegarde introuvable : " + nomFichier);
+        }
+
+        // 1) Sauvegarde de sécurité de l'état ACTUEL avant de l'écraser — si elle échoue,
+        // on abandonne : jamais de restauration sans un moyen de revenir en arrière.
+        ResultatSauvegardeDto securite = effectuerSauvegarde();
+        if (!securite.isSuccess()) {
+            return ResultatRestaurationDto.echec(
+                    "Restauration annulée : la sauvegarde de sécurité de l'état actuel a échoué (" +
+                            securite.getMessage() + "). Rien n'a été modifié.");
+        }
+
+        // 2) Snapshot du statut super admin et des fonctionnalités avancées AVANT
+        // d'écraser la base — pour les réappliquer après, quel que soit leur état dans
+        // le fichier restauré (voir BackupService.restaurer).
+        Map<String, Boolean> superAdminParUsername = utilisateurRepository.findAll().stream()
+                .collect(Collectors.toMap(Utilisateur::getUsername, Utilisateur::isSuperAdmin, (a, b) -> a));
+        List<FonctionnaliteBoutique> fonctionnalitesActuelles = fonctionnaliteBoutiqueRepository.findAll().stream()
+                .map(f -> new FonctionnaliteBoutique(f.getCle(), f.isActif()))
+                .collect(Collectors.toList());
+
+        try {
+            String nomBase = extraireNomBase(datasourceUrl);
+            String hote = extraireHote(datasourceUrl);
+
+            Path cheminSqlBrut = nomFichier.endsWith(".gz") ? decompresser(cheminFichier) : cheminFichier;
+
+            boolean restaurationReussie = lancerMysqlRestore(hote, nomBase, cheminSqlBrut);
+            if (nomFichier.endsWith(".gz")) {
+                supprimerSiPresent(cheminSqlBrut);
+            }
+
+            if (!restaurationReussie) {
+                return ResultatRestaurationDto.echec(
+                        "Échec de la restauration : impossible d'appliquer le fichier SQL. Une sauvegarde de "
+                                + "sécurité de l'état d'avant restauration a été créée (" + securite.getNomFichier()
+                                + "), la base actuelle n'a pas été modifiée par cette tentative ratée.");
+            }
+        } catch (Exception e) {
+            log.error("Échec inattendu de la restauration : {}", e.getMessage(), e);
+            return ResultatRestaurationDto.echec("Erreur inattendue lors de la restauration : " + e.getMessage());
+        }
+
+        // 3) Réapplique le statut super admin et les fonctionnalités avancées d'avant la
+        // restauration — jamais ceux du fichier restauré (voir doc de la méthode).
+        for (Utilisateur u : utilisateurRepository.findAll()) {
+            Boolean etaitSuperAdmin = superAdminParUsername.get(u.getUsername());
+            if (etaitSuperAdmin != null && u.isSuperAdmin() != etaitSuperAdmin) {
+                u.setSuperAdmin(etaitSuperAdmin);
+                utilisateurRepository.save(u);
+            }
+        }
+        for (FonctionnaliteBoutique f : fonctionnalitesActuelles) {
+            FonctionnaliteBoutique cible = fonctionnaliteBoutiqueRepository.findByCle(f.getCle())
+                    .orElseGet(() -> new FonctionnaliteBoutique(f.getCle(), f.isActif()));
+            cible.setActif(f.isActif());
+            fonctionnaliteBoutiqueRepository.save(cible);
+        }
+
+        log.info("Restauration réussie depuis {} (sauvegarde de sécurité préalable : {})",
+                nomFichier, securite.getNomFichier());
+        return ResultatRestaurationDto.succes(
+                "Base restaurée depuis " + nomFichier + ". Statut super admin et fonctionnalités avancées conservés "
+                        + "tels qu'ils étaient avant la restauration. Sauvegarde de sécurité de l'état précédent : "
+                        + securite.getNomFichier());
+    }
+
     // ==================== Détail technique ====================
 
     /**
@@ -199,6 +305,76 @@ public class BackupServiceImpl implements BackupService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("Sauvegarde interrompue pendant l'exécution de mysqldump : {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Décompresse un fichier .gz vers un fichier .sql temporaire (même dossier), pour
+     * que lancerMysqlRestore() puisse le lire. Le fichier temporaire est supprimé par
+     * l'appelant (restaurer()) une fois la restauration terminée, succès ou échec.
+     */
+    private Path decompresser(Path cheminGz) throws IOException {
+        String nomSansGz = cheminGz.getFileName().toString().replaceAll("\\.gz$", "");
+        Path cheminSql = cheminGz.resolveSibling(nomSansGz + ".restore-tmp.sql");
+        try (GZIPInputStream in = new GZIPInputStream(Files.newInputStream(cheminGz));
+             var out = Files.newOutputStream(cheminSql)) {
+            in.transferTo(out);
+        }
+        return cheminSql;
+    }
+
+    /**
+     * Lance `mysql` pour appliquer un dump .sql sur la base — miroir de lancerMysqldump()
+     * ci-dessus (même gestion du mot de passe via MYSQL_PWD, jamais en argument visible).
+     */
+    private boolean lancerMysqlRestore(String hote, String nomBase, Path cheminSql) {
+        List<String> commande = new ArrayList<>();
+        commande.add("mysql");
+        commande.add("-h");
+        commande.add(hote);
+        commande.add("-u");
+        commande.add(datasourceUsername);
+        commande.add(nomBase);
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(commande);
+            pb.redirectInput(cheminSql.toFile());
+            if (datasourcePassword != null && !datasourcePassword.isBlank()) {
+                pb.environment().put("MYSQL_PWD", datasourcePassword);
+            }
+
+            Process process = pb.start();
+
+            String erreurs;
+            try (InputStream errStream = process.getErrorStream();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(errStream))) {
+                erreurs = reader.lines().collect(Collectors.joining(System.lineSeparator()));
+            }
+
+            boolean termineATemps = process.waitFor(10, TimeUnit.MINUTES);
+            if (!termineATemps) {
+                process.destroyForcibly();
+                log.error("mysql (restauration) n'a pas terminé dans le délai imparti (10 minutes) — processus interrompu");
+                return false;
+            }
+
+            int codeRetour = process.exitValue();
+            if (codeRetour != 0) {
+                log.error("mysql (restauration) a retourné le code d'erreur {} (base={}, hôte={}) : {}",
+                        codeRetour, nomBase, hote, erreurs);
+                return false;
+            }
+            if (!erreurs.isBlank()) {
+                log.warn("mysql (restauration) a produit des messages sur stderr (code retour 0, non bloquant) : {}", erreurs);
+            }
+            return true;
+        } catch (IOException e) {
+            log.error("Impossible de lancer mysql pour la restauration (probablement absent du PATH système) : {}", e.getMessage());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Restauration interrompue pendant l'exécution de mysql : {}", e.getMessage());
             return false;
         }
     }
@@ -270,12 +446,34 @@ public class BackupServiceImpl implements BackupService {
         }
     }
 
+    /**
+     * Best-effort : sur Windows, le fichier temporaire décompressé pour la restauration
+     * (voir decompresser()/restaurer()) peut encore être considéré "en cours d'utilisation"
+     * juste après que le processus mysql qui le lisait vient de se terminer (relâchement
+     * du handle de fichier pas toujours immédiat côté OS) — un premier essai immédiat
+     * échoue alors silencieusement. On retente une poignée de fois avec une courte pause,
+     * puis on programme deleteOnExit() en dernier recours pour ne jamais laisser un dump
+     * SQL complet de la base traîner indéfiniment sur le disque.
+     */
     private void supprimerSiPresent(Path chemin) {
-        try {
-            Files.deleteIfExists(chemin);
-        } catch (IOException ignored) {
-            // best-effort de nettoyage, non bloquant
+        for (int tentative = 0; tentative < 5; tentative++) {
+            try {
+                if (Files.deleteIfExists(chemin)) {
+                    return;
+                }
+                return; // fichier déjà absent
+            } catch (IOException e) {
+                try {
+                    Thread.sleep(200);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
+        log.warn("Impossible de supprimer le fichier temporaire {} après plusieurs tentatives, "
+                + "suppression programmée à l'arrêt de l'application.", chemin);
+        chemin.toFile().deleteOnExit();
     }
 
     private BackupInfoDto versBackupInfoDto(Path p) {

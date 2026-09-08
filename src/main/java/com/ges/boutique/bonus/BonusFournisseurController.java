@@ -1,5 +1,7 @@
 package com.ges.boutique.bonus;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +15,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/bonus-fournisseurs")
 @RequiredArgsConstructor
+@RequireFeature(CleFonctionnalite.BONUS_FOURNISSEURS)
 public class BonusFournisseurController {
 
     private final BonusFournisseurService service;

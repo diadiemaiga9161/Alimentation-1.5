@@ -1,5 +1,7 @@
 package com.ges.boutique.mobilemoney;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import com.ges.boutique.vente.ModePaiement;
 import com.ges.boutique.vente.Vente;
 import com.ges.boutique.vente.VenteRepository;
@@ -19,12 +21,13 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/mobile-money")
 @RequiredArgsConstructor
 @Tag(name = "Mobile Money", description = "Statistiques Orange Money et Moov Money")
+@RequireFeature(CleFonctionnalite.MOBILE_MONEY)
 public class MobileMoneyController {
 
     private final VenteRepository venteRepository;
 
     private static final List<ModePaiement> MOBILE_MONEY_MODES =
-            List.of(ModePaiement.ORANGE_MONEY, ModePaiement.MOOV_MONEY);
+            List.of(ModePaiement.ORANGE_MONEY, ModePaiement.MOOV_MONEY, ModePaiement.WAVE_MONEY);
 
     @GetMapping("/operations")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
@@ -42,6 +45,8 @@ public class MobileMoneyController {
             ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.ORANGE_MONEY, debut, fin);
         } else if ("MOOV_MONEY".equals(type)) {
             ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.MOOV_MONEY, debut, fin);
+        } else if ("WAVE_MONEY".equals(type)) {
+            ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.WAVE_MONEY, debut, fin);
         } else {
             ventes = venteRepository.findByModePaiementInAndDateRange(MOBILE_MONEY_MODES, debut, fin);
         }
@@ -52,6 +57,10 @@ public class MobileMoneyController {
                 .sum();
         double totalMoov = ventes.stream()
                 .filter(v -> ModePaiement.MOOV_MONEY == v.getModePaiement())
+                .mapToDouble(v -> v.getMontantTotal() != null ? v.getMontantTotal() : 0)
+                .sum();
+        double totalWave = ventes.stream()
+                .filter(v -> ModePaiement.WAVE_MONEY == v.getModePaiement())
                 .mapToDouble(v -> v.getMontantTotal() != null ? v.getMontantTotal() : 0)
                 .sum();
 
@@ -72,7 +81,8 @@ public class MobileMoneyController {
         result.put("operations", operations);
         result.put("totalOrangeMoney", totalOrange);
         result.put("totalMoovMoney", totalMoov);
-        result.put("totalGlobal", totalOrange + totalMoov);
+        result.put("totalWaveMoney", totalWave);
+        result.put("totalGlobal", totalOrange + totalMoov + totalWave);
         result.put("nombreOperations", ventes.size());
         result.put("periode", periode);
         result.put("type", type);
@@ -121,6 +131,8 @@ public class MobileMoneyController {
             ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.ORANGE_MONEY, range[0], range[1]);
         } else if ("MOOV_MONEY".equals(type)) {
             ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.MOOV_MONEY, range[0], range[1]);
+        } else if ("WAVE_MONEY".equals(type)) {
+            ventes = venteRepository.findByModePaiementAndDateRange(ModePaiement.WAVE_MONEY, range[0], range[1]);
         } else {
             ventes = venteRepository.findByModePaiementInAndDateRange(MOBILE_MONEY_MODES, range[0], range[1]);
         }
@@ -153,16 +165,20 @@ public class MobileMoneyController {
     private Map<String, Object> buildResumePeriode(LocalDateTime debut, LocalDateTime fin) {
         double orange = venteRepository.getTotalByModePaiementAndDateRange(ModePaiement.ORANGE_MONEY, debut, fin);
         double moov = venteRepository.getTotalByModePaiementAndDateRange(ModePaiement.MOOV_MONEY, debut, fin);
+        double wave = venteRepository.getTotalByModePaiementAndDateRange(ModePaiement.WAVE_MONEY, debut, fin);
         long nbOrange = venteRepository.countByModePaiementAndDateRange(ModePaiement.ORANGE_MONEY, debut, fin);
         long nbMoov = venteRepository.countByModePaiementAndDateRange(ModePaiement.MOOV_MONEY, debut, fin);
+        long nbWave = venteRepository.countByModePaiementAndDateRange(ModePaiement.WAVE_MONEY, debut, fin);
 
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("orangeMoney", orange);
         r.put("moovMoney", moov);
-        r.put("total", orange + moov);
+        r.put("waveMoney", wave);
+        r.put("total", orange + moov + wave);
         r.put("nombreOrange", nbOrange);
         r.put("nombreMoov", nbMoov);
-        r.put("nombreTotal", nbOrange + nbMoov);
+        r.put("nombreWave", nbWave);
+        r.put("nombreTotal", nbOrange + nbMoov + nbWave);
         return r;
     }
 

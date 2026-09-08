@@ -36,6 +36,13 @@ public class DataInitializer implements CommandLineRunner {
             creerBoutiqueParDefaut();
         }
 
+        // Compte super admin (Amadou Maiga) : vérifié à CHAQUE démarrage (pas seulement
+        // sur une base vide), pour que le compte apparaisse automatiquement aussi bien
+        // sur une nouvelle boutique que sur une boutique existante après mise à jour du
+        // backend. Ne fait que CRÉER si absent — ne touche jamais un compte existant,
+        // pour ne pas écraser un mot de passe déjà changé par l'intéressé.
+        assurerCompteSuperAdmin();
+
         System.out.println("=========================================");
         System.out.println("Initialisation terminée avec succès!");
         System.out.println("=========================================");
@@ -76,6 +83,80 @@ public class DataInitializer implements CommandLineRunner {
         utilisateurRepository.save(gestionnaire);
 
         System.out.println("✅ Utilisateurs par défaut créés.");
+    }
+
+    private void assurerCompteSuperAdmin() {
+        final String username = "amadou";
+        final String nomComplet = "Amadou Maiga";
+        final String email = "91613489.diadie@gmail.com";
+
+        // Certaines boutiques ont déjà un compte "amadou" créé avant ce système (compte
+        // personnel utilisé de longue date, parfois avec un nom/email/mot de passe
+        // différents selon la boutique) : on le PROMEUT sur place et on aligne nom, email
+        // et mot de passe pour que ce soit exactement le même compte partout. Ce
+        // réalignement du mot de passe ne se fait qu'UNE SEULE FOIS, au moment précis de
+        // la promotion (première fois que superAdmin passe à true) — une fois promu, les
+        // démarrages suivants ne retouchent plus jamais le mot de passe, pour ne pas
+        // écraser un changement fait entre-temps par l'intéressé lui-même.
+        var existant = utilisateurRepository.findByUsername(username);
+        if (existant.isPresent()) {
+            Utilisateur u = existant.get();
+            boolean modifie = false;
+            boolean premierePromotion = !u.isSuperAdmin();
+            if (premierePromotion) {
+                u.setSuperAdmin(true);
+                u.setPassword(passwordEncoder.encode("Diadie2026"));
+                modifie = true;
+            }
+            // Le privilège super admin exige le rôle ADMIN (voir @PreAuthorize sur
+            // /api/boutique/fonctionnalites) — sans ça la promotion serait inopérante.
+            if (u.getRole() != RoleUtilisateur.ADMIN) {
+                u.setRole(RoleUtilisateur.ADMIN);
+                modifie = true;
+            }
+            if (!nomComplet.equals(u.getNomComplet())) {
+                u.setNomComplet(nomComplet);
+                modifie = true;
+            }
+            if (!email.equalsIgnoreCase(u.getEmail())) {
+                // L'email est unique en base : on ne l'aligne que si aucun AUTRE compte ne
+                // l'utilise déjà dans cette boutique (sinon on laisserait planter la sauvegarde).
+                boolean prisParUnAutre = utilisateurRepository.findByEmail(email)
+                        .filter(autre -> !autre.getId().equals(u.getId()))
+                        .isPresent();
+                if (prisParUnAutre) {
+                    System.out.println("⚠️ Email du compte super admin non aligné : " + email + " déjà utilisé par un autre compte dans cette boutique.");
+                } else {
+                    u.setEmail(email);
+                    modifie = true;
+                }
+            }
+            if (modifie) {
+                utilisateurRepository.save(u);
+                System.out.println("✅ Compte existant promu/aligné super admin : " + username);
+            }
+            return;
+        }
+
+        if (utilisateurRepository.findByEmail(email).isPresent()) {
+            // Un autre compte utilise déjà cet email sous un autre identifiant — on ne
+            // force rien pour éviter un conflit, l'admin devra régulariser lui-même.
+            System.out.println("⚠️ Compte super admin non créé : l'email " + email + " est déjà utilisé par un autre compte.");
+            return;
+        }
+
+        Utilisateur superAdmin = new Utilisateur();
+        superAdmin.setUsername(username);
+        superAdmin.setPassword(passwordEncoder.encode("Diadie2026"));
+        superAdmin.setNomComplet("Amadou Maiga");
+        superAdmin.setEmail(email);
+        superAdmin.setTelephone("+22300000000");
+        superAdmin.setRole(RoleUtilisateur.ADMIN);
+        superAdmin.setActif(true);
+        superAdmin.setSuperAdmin(true);
+        utilisateurRepository.save(superAdmin);
+
+        System.out.println("✅ Compte super admin créé : " + username);
     }
 
     private void creerBoutiqueParDefaut() {

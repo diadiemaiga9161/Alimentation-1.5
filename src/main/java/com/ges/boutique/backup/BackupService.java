@@ -32,4 +32,15 @@ public interface BackupService {
      * plus ancien. Ne lance jamais d'exception (dossier absent ou illisible -> liste vide).
      */
     List<BackupInfoDto> listerSauvegardes();
+
+    /**
+     * Restaure la base à partir d'un fichier de sauvegarde existant — réservé au super
+     * admin (voir BackupController). Prend d'abord une sauvegarde de sécurité de l'état
+     * ACTUEL (abandonne si celle-ci échoue, pour ne jamais restaurer sans filet), puis
+     * remplace toute la base par le contenu du fichier choisi, puis réapplique le statut
+     * super admin et l'état des fonctionnalités avancées tels qu'ils étaient juste avant
+     * la restauration (jamais ceux de la sauvegarde restaurée) — voir FeatureToggleService
+     * et Utilisateur.superAdmin.
+     */
+    ResultatRestaurationDto restaurer(String nomFichier);
 }

@@ -65,6 +65,9 @@ public class ProduitServiceImpl implements ProduitService {
         produit.setConditionsStockage(request.getConditionsStockage());
         produit.setPoidsVolume(request.getPoidsVolume());
         produit.setUniteMesure(request.getUniteMesure());
+        if (request.getUniteBase() != null) {
+            produit.setUniteBase(request.getUniteBase());
+        }
         produit.setBio(request.isBio());
         produit.setOrigine(request.getOrigine());
         produit.setTypeVente(request.getTypeVente() != null ? request.getTypeVente() : "DETAIL");
@@ -169,6 +172,10 @@ public class ProduitServiceImpl implements ProduitService {
 
         if (request.getUniteMesure() != null) {
             produit.setUniteMesure(request.getUniteMesure());
+        }
+
+        if (request.getUniteBase() != null) {
+            produit.setUniteBase(request.getUniteBase());
         }
 
         produit.setBio(request.isBio());

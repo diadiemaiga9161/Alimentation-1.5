@@ -1,5 +1,7 @@
 package com.ges.boutique.commande;
 
+import com.ges.boutique.boutique.Boutique;
+import com.ges.boutique.boutique.BoutiqueRepository;
 import com.ges.boutique.client.Client;
 import com.ges.boutique.client.ClientRepository;
 import com.ges.boutique.exception.RessourceIntrouvableException;
@@ -34,6 +36,7 @@ public class CommandeServiceImpl implements CommandeService {
     private final VenteService venteService;
     private final NotificationPersistanceService notifService;
     private final StockWebSocketService stockWebSocketService;
+    private final BoutiqueRepository boutiqueRepository;
 
     private static final Long BOUTIQUE_ID = 1L;
 
@@ -93,10 +96,16 @@ public class CommandeServiceImpl implements CommandeService {
 
     @Override
     @Transactional
-    public Commande valider(Long id, Long currentUserId) {
+    public Commande valider(Long id, Long currentUserId, ValidationCommandeRequest infosLivraison) {
         Commande commande = findById(id);
         if (commande.getStatut() == StatutCommande.VALIDEE) {
             throw new IllegalStateException("Cette commande est déjà validée");
+        }
+
+        if (infosLivraison != null) {
+            commande.setFraisLivraison(infosLivraison.getFraisLivraison());
+            commande.setChauffeurNom(infosLivraison.getChauffeurNom());
+            commande.setChauffeurTelephone(infosLivraison.getChauffeurTelephone());
         }
 
         // Une commande venue de la vitrine n'a pas de vendeur (personne ne l'a prise en
@@ -225,6 +234,14 @@ public class CommandeServiceImpl implements CommandeService {
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
     public Commande creerDepuisVitrine(VitrineCommandeRequest request) {
+        // Fonctionnalité désactivable par le super admin (Boutique > Paramètres) —
+        // vérifié ici (pas seulement masqué côté vitrine), sinon l'API publique
+        // reste ouverte même quand l'admin a coché "Vitrine désactivée".
+        Boutique boutique = boutiqueRepository.findAll().stream().findFirst().orElse(null);
+        if (boutique != null && Boolean.FALSE.equals(boutique.getFeatureVitrineActif())) {
+            throw new IllegalStateException("La vitrine en ligne est désactivée pour le moment");
+        }
+
         if (request.getLignes() == null || request.getLignes().isEmpty()) {
             throw new IllegalArgumentException("La commande doit contenir au moins un produit");
         }
@@ -238,6 +255,7 @@ public class CommandeServiceImpl implements CommandeService {
         commande.setOrigine(OrigineCommande.VITRINE);
         commande.setVendeur(null);
         commande.setNotes(request.getNotes());
+        commande.setAdresseLivraison(request.getAdresseLivraison());
         commande.setEstCredit(false);
         commande.setMontantVerse(0.0);
         // Pas de paiement en ligne : le mode réel n'est connu qu'à la remise. ESPECES

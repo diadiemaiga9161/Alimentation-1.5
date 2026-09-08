@@ -34,6 +34,8 @@ import java.util.Map;
  * - POST /api/backup/declencher                -> succès 200 { success:true, message, nomFichier, tailleOctets, dateCreation }
  *                                                  échec  500 { success:false, message }
  * - GET  /api/backup/telecharger/{nomFichier}  -> binaire (Content-Disposition: attachment) ou 400/404
+ * - POST /api/backup/restaurer/{nomFichier}    -> réservé au super admin, voir BackupService.restaurer
+ *                                                  succès 200 { success:true, message } | échec 400 { success:false, message }
  */
 @RestController
 @RequestMapping("/api/backup")
@@ -117,5 +119,23 @@ public class BackupController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + nomFichier + "\"")
                 .contentLength(fichier.length())
                 .body(resource);
+    }
+
+    // Réservé au super admin (pas un rôle séparé — flag superAdmin sur le compte, voir
+    // Utilisateur.java) : un admin classique de boutique ne doit jamais pouvoir écraser
+    // la base actuelle avec une ancienne sauvegarde.
+    @PostMapping("/restaurer/{nomFichier}")
+    @PreAuthorize("hasRole('ADMIN') and authentication.principal.superAdmin")
+    @Operation(summary = "Restaurer la base depuis une sauvegarde existante — réservé au super admin")
+    public ResponseEntity<Map<String, Object>> restaurer(@PathVariable String nomFichier) {
+        ResultatRestaurationDto resultat = backupService.restaurer(nomFichier);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", resultat.isSuccess());
+        response.put("message", resultat.getMessage());
+
+        return resultat.isSuccess()
+                ? ResponseEntity.ok(response)
+                : ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 }

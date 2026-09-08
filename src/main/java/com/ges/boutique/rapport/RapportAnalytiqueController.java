@@ -1,5 +1,7 @@
 package com.ges.boutique.rapport;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import com.ges.boutique.vente.LigneVenteRepository;
 import com.ges.boutique.vente.Vente;
 import com.ges.boutique.vente.VenteRepository;
@@ -18,6 +20,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/rapports")
 @RequiredArgsConstructor
+@RequireFeature(CleFonctionnalite.RAPPORTS)
 public class RapportAnalytiqueController {
 
     private final VenteRepository venteRepository;
@@ -136,7 +139,9 @@ public class RapportAnalytiqueController {
      * Historique des ventes par vendeur, groupé par jour, séparé comptant / crédit.
      * Une vente à crédit ne compte dans le CA que pour le montant réellement versé
      * (une vente à crédit sans aucun versement ne contribue pas au CA, mais compte
-     * quand même dans le nombre de ventes).
+     * quand même dans le nombre de ventes). Une vente annulée ou totalement retournée
+     * est exclue (ni comptée, ni sommée) ; une vente partiellement retournée reste
+     * comptée mais avec un CA net des articles rendus.
      */
     @GetMapping("/ventes-par-vendeur")
     public ResponseEntity<List<Map<String, Object>>> ventesParVendeur(
@@ -155,6 +160,11 @@ public class RapportAnalytiqueController {
 
         for (Vente v : ventes) {
             if (Boolean.TRUE.equals(v.getAnnulee())) continue;
+            // Vente totalement retournée = aucune vente nette pour le vendeur, exclue
+            // exactement comme une vente annulée. Une vente partiellement retournée
+            // reste comptée (le vendeur a bien vendu quelque chose), mais avec un
+            // chiffre d'affaires net des articles rendus (voir montantTotal plus bas).
+            if (Boolean.TRUE.equals(v.getEstRetourne()) && !Boolean.TRUE.equals(v.getRetourPartiel())) continue;
             if (v.getVendeur() == null || v.getDateVente() == null) continue;
 
             String date = v.getDateVente().toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE);
@@ -175,7 +185,10 @@ public class RapportAnalytiqueController {
             });
 
             boolean estCredit = Boolean.TRUE.equals(v.getEstCredit());
-            double montantTotal = v.getMontantTotal() != null ? v.getMontantTotal() : 0.0;
+            // CA net des retours partiels (montantMarchandiseRetournee = valeur de ce
+            // qui a été rendu, cf. Vente.java) — mêmes règles que les autres rapports.
+            double montantRetourneCA = v.getMontantMarchandiseRetournee() != null ? v.getMontantMarchandiseRetournee() : 0.0;
+            double montantTotal = (v.getMontantTotal() != null ? v.getMontantTotal() : 0.0) - montantRetourneCA;
             double montantVerse = v.getMontantVerse() != null ? v.getMontantVerse() : 0.0;
 
             if (estCredit) {
@@ -204,6 +217,112 @@ public class RapportAnalytiqueController {
             return ((String) a.get("vendeurNom")).compareTo((String) b.get("vendeurNom"));
         });
 
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * GET /api/rapports/complet?dateDebut=&dateFin=
+     * Endpoint UNIQUE regroupant tout ce qu'un rapport PDF (journalier/hebdomadaire/
+     * mensuel/annuel/personnalisé — la période est décidée par l'appelant via
+     * dateDebut/dateFin, cet endpoint n'impose aucune fenêtre fixe) doit pouvoir afficher :
+     * liste des ventes, produits les plus vendus, répartition par mode de paiement, résumé
+     * des crédits, nombre de clients servis. Construit une fois ici pour que les 3 fronts
+     * (Angular/Ionic/RN) génèrent un PDF avec exactement le même contenu, sans que chacun
+     * ré-implémente sa propre agrégation (risque d'incohérence entre plateformes).
+     */
+    @GetMapping("/complet")
+    public ResponseEntity<Map<String, Object>> rapportComplet(
+            @RequestParam String dateDebut,
+            @RequestParam String dateFin) {
+        LocalDateTime debut = LocalDate.parse(dateDebut).atStartOfDay();
+        LocalDateTime fin = LocalDate.parse(dateFin).atTime(LocalTime.MAX);
+
+        List<Vente> ventes = venteRepository.findByDateRange(debut, fin).stream()
+                .filter(v -> v.getAnnulee() == null || !v.getAnnulee())
+                .collect(Collectors.toList());
+
+        // ---- Liste des ventes (comme le PDF actuel) ----
+        List<Map<String, Object>> listeVentes = ventes.stream()
+                .sorted(Comparator.comparing(Vente::getDateVente, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(v -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("date", v.getDateVente());
+                    m.put("numeroVente", v.getNumeroVente());
+                    m.put("clientNom", v.getClientNom());
+                    m.put("modePaiement", v.getModePaiement() != null ? v.getModePaiement().name() : null);
+                    m.put("montantTotal", v.getMontantTotal());
+                    return m;
+                }).collect(Collectors.toList());
+        double totalVentes = ventes.stream().mapToDouble(v -> v.getMontantTotal() != null ? v.getMontantTotal() : 0.0).sum();
+
+        // ---- Produits les plus vendus SUR CETTE PÉRIODE PRÉCISE ----
+        Map<String, double[]> agregProduits = new LinkedHashMap<>(); // [quantite, ca]
+        for (Vente v : ventes) {
+            if (v.getLignes() == null) continue;
+            v.getLignes().forEach(l -> {
+                String nom = l.getProduitNom() != null ? l.getProduitNom() :
+                        (l.getProduit() != null ? l.getProduit().getNom() : "?");
+                double[] agg = agregProduits.computeIfAbsent(nom, k -> new double[2]);
+                agg[0] += l.getQuantite() != null ? l.getQuantite() : 0;
+                agg[1] += l.getSousTotal() != null ? l.getSousTotal() : 0;
+            });
+        }
+        List<Map<String, Object>> topProduits = agregProduits.entrySet().stream()
+                .sorted((a, b) -> Double.compare(b.getValue()[0], a.getValue()[0]))
+                .limit(15)
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("produitNom", e.getKey());
+                    m.put("quantiteVendue", (long) e.getValue()[0]);
+                    m.put("ca", e.getValue()[1]);
+                    return m;
+                }).collect(Collectors.toList());
+
+        // ---- Répartition par mode de paiement ----
+        Map<String, double[]> agregModes = new LinkedHashMap<>(); // [montant, nombre]
+        for (Vente v : ventes) {
+            String mode = v.getModePaiement() != null ? v.getModePaiement().name() : "INCONNU";
+            double[] agg = agregModes.computeIfAbsent(mode, k -> new double[2]);
+            agg[0] += v.getMontantTotal() != null ? v.getMontantTotal() : 0.0;
+            agg[1] += 1;
+        }
+        List<Map<String, Object>> repartitionModePaiement = agregModes.entrySet().stream()
+                .sorted((a, b) -> Double.compare(b.getValue()[0], a.getValue()[0]))
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("mode", e.getKey());
+                    m.put("montant", e.getValue()[0]);
+                    m.put("nombre", (long) e.getValue()[1]);
+                    return m;
+                }).collect(Collectors.toList());
+
+        // ---- Résumé crédits (créés sur la période) ----
+        List<Vente> credits = ventes.stream().filter(v -> Boolean.TRUE.equals(v.getEstCredit())).collect(Collectors.toList());
+        double totalCredits = credits.stream().mapToDouble(v -> v.getMontantTotal() != null ? v.getMontantTotal() : 0.0).sum();
+        double totalVerseCredits = credits.stream().mapToDouble(v -> v.getMontantVerse() != null ? v.getMontantVerse() : 0.0).sum();
+        Map<String, Object> resumeCredits = new LinkedHashMap<>();
+        resumeCredits.put("nombreCredits", credits.size());
+        resumeCredits.put("totalCredits", totalCredits);
+        resumeCredits.put("totalVerse", totalVerseCredits);
+        resumeCredits.put("totalRestant", totalCredits - totalVerseCredits);
+
+        // ---- Nombre de clients distincts servis ----
+        long nombreClients = ventes.stream()
+                .map(v -> v.getClientId() != null ? "C" + v.getClientId() : v.getClientNom())
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dateDebut", dateDebut);
+        result.put("dateFin", dateFin);
+        result.put("nombreVentes", ventes.size());
+        result.put("totalVentes", totalVentes);
+        result.put("ventes", listeVentes);
+        result.put("topProduits", topProduits);
+        result.put("repartitionModePaiement", repartitionModePaiement);
+        result.put("resumeCredits", resumeCredits);
+        result.put("nombreClients", nombreClients);
         return ResponseEntity.ok(result);
     }
 

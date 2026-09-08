@@ -1,5 +1,7 @@
 package com.ges.boutique.objectif;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +12,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/objectifs-fournisseur")
 @RequiredArgsConstructor
+@RequireFeature(CleFonctionnalite.OBJECTIFS_FOURNISSEUR)
 public class ObjectifFournisseurController {
 
     private final ObjectifFournisseurService service;

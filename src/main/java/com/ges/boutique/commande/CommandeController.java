@@ -78,8 +78,9 @@ public class CommandeController {
 
     @PostMapping("/{id}/valider")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
-    public ResponseEntity<Map<String, Object>> valider(@PathVariable Long id) {
-        Commande commande = commandeService.valider(id, getUserId());
+    public ResponseEntity<Map<String, Object>> valider(@PathVariable Long id,
+                                                         @RequestBody(required = false) ValidationCommandeRequest infosLivraison) {
+        Commande commande = commandeService.valider(id, getUserId(), infosLivraison);
         Map<String, Object> resp = new HashMap<>();
         resp.put("success", true);
         resp.put("message", "Commande validée — vente créée N°" + commande.getVenteId());

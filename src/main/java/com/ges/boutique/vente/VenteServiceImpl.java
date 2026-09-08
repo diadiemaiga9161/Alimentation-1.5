@@ -9,6 +9,7 @@ import com.ges.boutique.config.NotificationService;
 import com.ges.boutique.exception.RessourceIntrouvableException;
 import com.ges.boutique.websocket.StockWebSocketService;
 import com.ges.boutique.exception.StockInsuffisantException;
+import com.ges.boutique.fidelite.FideliteService;
 import com.ges.boutique.inventaire.InventaireService;
 import com.ges.boutique.inventaire.MouvementStock;
 import com.ges.boutique.inventaire.MouvementStockRepository;
@@ -56,6 +57,7 @@ public class VenteServiceImpl implements VenteService {
     private final MouvementStockRepository mouvementStockRepository;
     private final StockWebSocketService stockWebSocketService;
     private final JournalAuditService journalAuditService;
+    private final FideliteService fideliteService;
 
     /** Identifiant de la boutique courante (1 instance = 1 boutique dans cette architecture). */
     private static final Long BOUTIQUE_ID = 1L;
@@ -177,6 +179,8 @@ public class VenteServiceImpl implements VenteService {
         if (avanceUtilisee > 0) {
             avanceClientService.utiliserAvance(request.getClientNom(), avanceUtilisee);
         }
+
+        fideliteService.gagnerPoints(savedVente.getClient(), savedVente.getId(), savedVente.getMontantTotal());
 
         log.info("✅ CRÉDIT créé - Numéro: {}, Client: {}, Montant: {}, estCredit: {}",
                 savedVente.getNumeroVente(), savedVente.getClientNom(),
@@ -508,6 +512,7 @@ public class VenteServiceImpl implements VenteService {
                 vente.setDateAnnulation(LocalDateTime.now());
                 vente.setUtilisateurAnnulation(utilisateurId);
                 Vente venteAnnuleeNonReglee = venteRepository.save(vente);
+                fideliteService.annulerMouvementsPourVente(venteId);
                 notificationService.notifierVenteAnnulee(Map.of("venteId", venteId, "montant", vente.getMontantTotal()));
                 notificationService.notifierMiseAJourDashboard();
                 return venteAnnuleeNonReglee;
@@ -553,6 +558,7 @@ public class VenteServiceImpl implements VenteService {
         vente.setUtilisateurAnnulation(utilisateurId);
 
         Vente saved = venteRepository.save(vente);
+        fideliteService.annulerMouvementsPourVente(venteId);
         notificationService.notifierVenteAnnulee(Map.of("venteId", venteId, "montant", vente.getMontantTotal()));
         notificationService.notifierMiseAJourDashboard();
         return saved;
@@ -961,6 +967,7 @@ public class VenteServiceImpl implements VenteService {
 
         Vente savedVente = venteRepository.save(vente);
         mettreAJourStockVente(savedVente);
+        fideliteService.gagnerPoints(savedVente.getClient(), savedVente.getId(), savedVente.getMontantTotal());
         return savedVente;
     }
 
@@ -1357,11 +1364,21 @@ public class VenteServiceImpl implements VenteService {
 
         if (Math.abs(difference) > 0.01) {
             if (difference > 0) {
-                // Client paye la différence → ENTRÉE caisse (valable pour comptant ET crédit)
-                caisseService.entreeCaisse(difference,
-                        "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
-                        request.getUtilisateurId(), "ESPECES", null);
-                log.info("Entrée caisse: +{} F (client paye la différence)", difference);
+                // Seulement pour les ventes COMPTANT : ici le client paye vraiment la
+                // différence tout de suite → ENTRÉE caisse. Pour une vente à CRÉDIT, cet
+                // argent n'est pas encaissé (il vient juste s'ajouter au montant restant
+                // dû par le client via calculerTotal() plus haut) — l'ajouter aussi en
+                // caisse le comptait deux fois (une fois comme dette client, une fois
+                // comme argent physique reçu alors qu'aucun argent n'est entré).
+                if (!Boolean.TRUE.equals(vente.getEstCredit())) {
+                    caisseService.entreeCaisse(difference,
+                            "Complément modification vente N°" + vente.getNumeroVente() + " - " + motif,
+                            request.getUtilisateurId(), "ESPECES", null);
+                    log.info("Entrée caisse: +{} F (client paye la différence)", difference);
+                } else {
+                    log.info("Modification crédit - Différence positive: {} F, PAS d'entrée caisse (juste ajustement du montant restant)",
+                            difference);
+                }
             } else {
                 // ✅ MODIFICATION ICI : Seulement pour les ventes COMPTANT
                 if (!Boolean.TRUE.equals(vente.getEstCredit())) {

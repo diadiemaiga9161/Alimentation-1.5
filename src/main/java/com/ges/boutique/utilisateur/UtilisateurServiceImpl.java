@@ -37,6 +37,16 @@ public class UtilisateurServiceImpl implements UtilisateurService {
             throw new RuntimeException("L'email existe déjà");
         }
 
+        // Le statut super admin ne se donne jamais via cet endpoint (accessible à tout
+        // ADMIN de boutique) — seul le compte créé automatiquement au démarrage
+        // (DataInitializer) ou un accès direct à la base peut l'obtenir, pour qu'un
+        // admin classique ne puisse pas se l'auto-attribuer en le glissant dans le JSON.
+        utilisateur.setSuperAdmin(false);
+        // VENDEUR par défaut si le formulaire ne précise pas de rôle (le champ n'a plus
+        // de valeur par défaut sur l'entité elle-même — voir Utilisateur.java).
+        if (utilisateur.getRole() == null) {
+            utilisateur.setRole(RoleUtilisateur.VENDEUR);
+        }
         utilisateur.setPassword(passwordEncoder.encode(utilisateur.getPassword()));
         return utilisateurRepository.save(utilisateur);
     }
@@ -46,6 +56,7 @@ public class UtilisateurServiceImpl implements UtilisateurService {
     public Utilisateur modifierUtilisateur(Long id, Utilisateur utilisateurDetails) {
         Utilisateur utilisateur = utilisateurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        bloquerSiSuperAdminProtege(utilisateur);
 
         if (utilisateurDetails.getNomComplet() != null) {
             utilisateur.setNomComplet(utilisateurDetails.getNomComplet());
@@ -107,11 +118,25 @@ public class UtilisateurServiceImpl implements UtilisateurService {
         return null;
     }
 
+    /**
+     * Le compte super admin (flag superAdmin, voir Utilisateur.java) doit être invisible
+     * et intouchable pour un admin de boutique classique — un admin normal ne doit même
+     * pas pouvoir déduire qu'il existe. On renvoie donc la même exception "introuvable"
+     * que pour un ID qui n'existe pas, plutôt qu'un refus d'accès qui révélerait sa présence.
+     */
+    private void bloquerSiSuperAdminProtege(Utilisateur cible) {
+        if (!cible.isSuperAdmin()) return;
+        Utilisateur appelant = getUtilisateurCourantAudit();
+        if (appelant != null && appelant.isSuperAdmin()) return;
+        throw new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + cible.getId());
+    }
+
     @Override
     @Transactional
     public Utilisateur changerStatutUtilisateur(Long id, boolean actif) {
         Utilisateur utilisateur = utilisateurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        bloquerSiSuperAdminProtege(utilisateur);
         utilisateur.setActif(actif);
         return utilisateurRepository.save(utilisateur);
     }
@@ -121,6 +146,7 @@ public class UtilisateurServiceImpl implements UtilisateurService {
     public Utilisateur gererLienEmploye(Long id, LienEmployeRequest request) {
         Utilisateur utilisateur = utilisateurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        bloquerSiSuperAdminProtege(utilisateur);
 
         if (request.isEstEmploye()) {
             Employe employe;
@@ -159,19 +185,27 @@ public class UtilisateurServiceImpl implements UtilisateurService {
     public void supprimerUtilisateur(Long id) {
         Utilisateur utilisateur = utilisateurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        bloquerSiSuperAdminProtege(utilisateur);
         utilisateur.setActif(false);
         utilisateurRepository.save(utilisateur);
     }
 
     @Override
     public Utilisateur obtenirUtilisateurParId(Long id) {
-        return utilisateurRepository.findById(id)
+        Utilisateur utilisateur = utilisateurRepository.findById(id)
                 .orElseThrow(() -> new RessourceIntrouvableException("Utilisateur non trouvé avec l'ID: " + id));
+        bloquerSiSuperAdminProtege(utilisateur);
+        return utilisateur;
     }
 
     @Override
     public List<Utilisateur> obtenirTousLesUtilisateurs() {
-        return utilisateurRepository.findAll();
+        List<Utilisateur> tous = utilisateurRepository.findAll();
+        Utilisateur appelant = getUtilisateurCourantAudit();
+        if (appelant != null && appelant.isSuperAdmin()) return tous;
+        // Le compte super admin n'apparaît pas dans la liste du personnel pour un admin
+        // classique — voir bloquerSiSuperAdminProtege pour les autres opérations.
+        return tous.stream().filter(u -> !u.isSuperAdmin()).toList();
     }
 
     @Override

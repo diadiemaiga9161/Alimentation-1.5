@@ -1,5 +1,7 @@
 package com.ges.boutique.ia;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +15,7 @@ import java.util.Map;
 @RequestMapping("/api/ia")
 @RequiredArgsConstructor
 @Tag(name = "Assistant IA", description = "Chatbot intelligent pour la gestion de boutique")
+@RequireFeature(CleFonctionnalite.IA)
 public class IAChatController {
 
     private final IAChatService iaChatService;

@@ -1,12 +1,16 @@
 package com.ges.boutique.dette;
 
+import com.ges.boutique.exception.FonctionnaliteDesactiveeException;
 import com.ges.boutique.exception.RessourceIntrouvableException;
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,8 +28,12 @@ public class DetteAncienneController {
 
     private final DetteAncienneService detteService;
 
+    // Seules la création/modification sont bloquées si le super admin désactive cette
+    // fonctionnalité — règlement (paiement) et lecture restent ouverts pour ne jamais
+    // empêcher un client de la boutique de rembourser ou consulter ses dettes réelles.
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @RequireFeature(CleFonctionnalite.DETTES_ANCIENNES)
     @Operation(summary = "Créer une nouvelle dette ancienne")
     public ResponseEntity<Map<String, Object>> creerDette(@RequestBody DetteAncienneRequest request) {
         DetteAncienneDto dette = detteService.creerDette(request);
@@ -38,6 +46,7 @@ public class DetteAncienneController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'VENDEUR')")
+    @RequireFeature(CleFonctionnalite.DETTES_ANCIENNES)
     @Operation(summary = "Modifier une dette ancienne")
     public ResponseEntity<Map<String, Object>> modifierDette(@PathVariable Long id, @RequestBody DetteAncienneRequest request) {
         DetteAncienneDto dette = detteService.modifierDette(id, request);
@@ -243,6 +252,30 @@ public class DetteAncienneController {
         response.put("success", false);
         response.put("error", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    // Sans ce handler dédié, l'AccessDeniedException levée par le @PreAuthorize
+    // hasRole('ADMIN') sur la suppression (un handler local prime toujours sur
+    // celui, plus spécifique, de GlobalExceptionHandler) tombait dans le
+    // handleGeneralException ci-dessous et renvoyait un 500 "erreur interne"
+    // trompeur au lieu d'un 403 clair.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", "Vous n'avez pas les permissions nécessaires pour effectuer cette action");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    // Même piège que AccessDeniedException ci-dessus : sans handler dédié, l'exception
+    // levée par @RequireFeature tombait dans handleGeneralException (500 trompeur au
+    // lieu d'un 403 clair).
+    @ExceptionHandler(FonctionnaliteDesactiveeException.class)
+    public ResponseEntity<Map<String, Object>> handleFonctionnaliteDesactivee(FonctionnaliteDesactiveeException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", e.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
     @ExceptionHandler(Exception.class)

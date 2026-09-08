@@ -1,5 +1,7 @@
 package com.ges.boutique.compte;
 
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,6 +14,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/comptes")
 @RequiredArgsConstructor
+@RequireFeature(CleFonctionnalite.COMPTES_BANCAIRES)
 public class CompteController {
 
     private final CompteService compteService;

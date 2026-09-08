@@ -66,6 +66,12 @@ public class Produit {
     @Column(name = "seuil_alerte")
     private Integer seuilAlerte = 10;
 
+    // Nom de l'unité de base pour l'affichage (ex: "Pièce", "Kg", "Litre") — voir
+    // UniteVente pour les unités de vente alternatives (Carton, Cartouche...) définies
+    // en plus de cette unité de base, chacune avec son propre facteur de conversion.
+    @Column(name = "unite_base", length = 30)
+    private String uniteBase = "Unité";
+
     @Column(name = "code_barre")
     private String codeBarre;
 

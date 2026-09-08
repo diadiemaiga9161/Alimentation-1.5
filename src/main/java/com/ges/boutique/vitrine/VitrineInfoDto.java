@@ -19,4 +19,7 @@ public class VitrineInfoDto {
     private String telephone;
     private String horairesOuverture;
     private String logoPath;
+
+    /** Si false, la vitrine (Boutique > Paramètres) a été désactivée par le super admin. */
+    private boolean vitrineActive;
 }

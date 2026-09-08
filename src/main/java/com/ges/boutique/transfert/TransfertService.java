@@ -124,11 +124,18 @@ public class TransfertService {
     @Transactional
     @CacheEvict(value = "produits", allEntries = true)
     public TransfertStock creer(TransfertRequest req, String currentUser) {
-        BoutiquePartenaire dest = partenaireRepository.findById(req.getBoutiqueDestId())
-                .orElseThrow(() -> new RessourceIntrouvableException("Boutique destination introuvable"));
-
         Boutique sourceBoutique = boutiqueRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new RuntimeException("Boutique source introuvable"));
+
+        // Fonctionnalité désactivable par le super admin (Boutique > Paramètres) —
+        // vérifié en premier (avant même de chercher le partenaire), pas seulement
+        // masqué côté menu, sinon l'API reste ouverte.
+        if (Boolean.FALSE.equals(sourceBoutique.getFeatureTransfertsActif())) {
+            throw new IllegalStateException("Les transferts inter-boutiques sont désactivés pour cette boutique");
+        }
+
+        BoutiquePartenaire dest = partenaireRepository.findById(req.getBoutiqueDestId())
+                .orElseThrow(() -> new RessourceIntrouvableException("Boutique destination introuvable"));
 
         TransfertStock t = new TransfertStock();
         t.setBoutiqueSourceNom(sourceBoutique.getNom());

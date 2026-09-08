@@ -3,6 +3,8 @@ package com.ges.boutique.resultat;
 import com.ges.boutique.bonus.BonusFournisseurRepository;
 import com.ges.boutique.depense.DepenseRepository;
 import com.ges.boutique.employe.PaiementEmployeRepository;
+import com.ges.boutique.feature.CleFonctionnalite;
+import com.ges.boutique.feature.RequireFeature;
 import com.ges.boutique.vente.VenteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +21,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/resultat-net")
 @RequiredArgsConstructor
+@RequireFeature(CleFonctionnalite.RESULTAT_NET)
 public class ResultatNetController {
 
     private final VenteRepository venteRepository;

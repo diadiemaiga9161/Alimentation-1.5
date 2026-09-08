@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -536,6 +537,19 @@ public class CaisseController {
         response.put("success", false);
         response.put("error", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    // Sans ce handler dédié, l'AccessDeniedException levée par les @PreAuthorize
+    // ci-dessus (ex: VENDEUR sur /ouvrir, /entree...) tombait dans le
+    // handleGeneralException ci-dessous (un handler local prime toujours sur
+    // celui, plus spécifique, de GlobalExceptionHandler) et renvoyait un 500
+    // "erreur interne" trompeur au lieu d'un 403 clair.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException e) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("error", "Vous n'avez pas les permissions nécessaires pour effectuer cette action");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
     @ExceptionHandler(Exception.class)

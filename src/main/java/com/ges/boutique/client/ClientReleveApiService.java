@@ -19,6 +19,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -52,7 +53,7 @@ public class ClientReleveApiService {
         LocalDateTime date;
         String type; // VENTE | VERSEMENT | RETOUR
         Vente vente;
-        OperationCaisse reglement;
+        List<OperationCaisse> reglements; // 1 élément = versement simple, plusieurs = paiement groupé consolidé
         RetourVente retour;
         double montantVente;   // > 0 uniquement pour VENTE
         double montantVerse;   // montant qui réduit le reliquat pour CE mouvement
@@ -124,12 +125,37 @@ public class ClientReleveApiService {
             mouvements.add(m);
         }
 
+        // Un paiement "groupé" (plusieurs anciens crédits réglés en une fois avec un seul
+        // montant) crée plusieurs OperationCaisse en coulisses — un par crédit concerné,
+        // reliées par une référence commune (referenceGroupe). Sans regroupement ici, la
+        // situation client affichait ces paiements éclatés en plusieurs petites lignes
+        // séparées au lieu d'UNE ligne correspondant à ce que le client a réellement fait
+        // (ex: "1 000 000 F versé aujourd'hui" au lieu de 3 lignes de 400/350/250 000 F).
+        // Un versement simple (referenceGroupe absent) reste une ligne à lui seul, inchangé.
+        Map<String, List<OperationCaisse>> reglementsParGroupe = new LinkedHashMap<>();
         for (OperationCaisse op : reglements) {
+            String groupe = op.getReferenceGroupe();
+            if (groupe != null && !groupe.isBlank()) {
+                reglementsParGroupe.computeIfAbsent(groupe, g -> new ArrayList<>()).add(op);
+            } else {
+                Mouvement m = new Mouvement();
+                m.date = op.getDateOperation();
+                m.type = "VERSEMENT";
+                m.reglements = List.of(op);
+                m.montantVerse = op.getMontant() != null ? op.getMontant() : 0.0;
+                mouvements.add(m);
+            }
+        }
+        for (List<OperationCaisse> ops : reglementsParGroupe.values()) {
             Mouvement m = new Mouvement();
-            m.date = op.getDateOperation();
+            // Toutes les opérations d'un même paiement groupé sont enregistrées lors de la
+            // même transaction utilisateur -> la plus ancienne des dates suffit.
+            m.date = ops.stream().map(OperationCaisse::getDateOperation)
+                    .filter(java.util.Objects::nonNull)
+                    .min(Comparator.naturalOrder()).orElse(null);
             m.type = "VERSEMENT";
-            m.reglement = op;
-            m.montantVerse = op.getMontant() != null ? op.getMontant() : 0.0;
+            m.reglements = ops;
+            m.montantVerse = ops.stream().mapToDouble(o -> o.getMontant() != null ? o.getMontant() : 0.0).sum();
             mouvements.add(m);
         }
 
@@ -269,17 +295,34 @@ public class ClientReleveApiService {
     }
 
     private ClientReleveLigneDto ligneVersement(Mouvement m) {
-        OperationCaisse op = m.reglement;
+        List<OperationCaisse> ops = m.reglements;
+        OperationCaisse premier = ops.get(0);
         ClientReleveLigneDto dto = new ClientReleveLigneDto();
-        dto.setDate(op.getDateOperation());
+        dto.setDate(m.date);
         dto.setType("VERSEMENT");
-        dto.setReferenceVente(op.getVente() != null ? op.getVente().getNumeroVente() : null);
-        dto.setReferenceReglement("REG-" + op.getId());
-        dto.setVenteId(op.getVente() != null ? op.getVente().getId() : op.getVenteCreditId());
+
+        if (ops.size() == 1) {
+            dto.setReferenceVente(premier.getVente() != null ? premier.getVente().getNumeroVente() : null);
+            dto.setReferenceReglement("REG-" + premier.getId());
+            dto.setVenteId(premier.getVente() != null ? premier.getVente().getId() : premier.getVenteCreditId());
+        } else {
+            // Paiement groupé consolidé : pas UNE vente précise à rattacher à cette ligne
+            // (plusieurs crédits différents réglés d'un coup) -> on liste les numéros de
+            // vente concernés dans referenceVente pour garder cette info visible.
+            String numeros = ops.stream()
+                    .map(o -> o.getVente() != null ? o.getVente().getNumeroVente() : null)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            dto.setReferenceVente(numeros.isEmpty() ? null : numeros);
+            dto.setReferenceReglement("REG-GROUPE-" + ops.size() + "-credits");
+            dto.setVenteId(null);
+        }
+
         dto.setMontantVersement(arrondir(m.montantVerse));
         dto.setResteAPayerApres(arrondir(m.resteAPayerApres));
-        dto.setModePaiement(op.getModePaiement() != null ? op.getModePaiement().toString() : null);
-        dto.setUtilisateurNom(getUtilisateurCaisseNom(op));
+        dto.setModePaiement(premier.getModePaiement() != null ? premier.getModePaiement().toString() : null);
+        dto.setUtilisateurNom(getUtilisateurCaisseNom(premier));
         return dto;
     }
 

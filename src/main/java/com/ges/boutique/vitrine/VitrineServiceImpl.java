@@ -44,6 +44,7 @@ public class VitrineServiceImpl implements VitrineService {
         dto.setTelephone(boutique.getTelephone());
         dto.setHorairesOuverture(boutique.getHorairesOuverture());
         dto.setLogoPath(boutique.getLogoPath());
+        dto.setVitrineActive(!Boolean.FALSE.equals(boutique.getFeatureVitrineActif()));
         return dto;
     }
 

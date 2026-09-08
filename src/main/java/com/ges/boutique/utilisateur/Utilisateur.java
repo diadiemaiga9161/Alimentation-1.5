@@ -38,9 +38,15 @@ public class Utilisateur implements UserDetails {
     @Column(nullable = false)
     private String telephone;
 
+    // BUG CORRIGÉ : une valeur par défaut ici (= RoleUtilisateur.VENDEUR) faisait qu'un
+    // JSON de modification n'incluant pas "role" désérialisait quand même le champ à
+    // VENDEUR (jamais null) au lieu de rester absent — modifierUtilisateur() écrasait
+    // alors silencieusement le rôle réel de l'utilisateur (ex: un ADMIN repassait
+    // VENDEUR après une simple modification de mot de passe). Le défaut est appliqué
+    // explicitement à la création (voir UtilisateurServiceImpl.creerUtilisateur), pas ici.
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private RoleUtilisateur role = RoleUtilisateur.VENDEUR;
+    private RoleUtilisateur role;
 
     private boolean actif = true;
 
@@ -57,6 +63,16 @@ public class Utilisateur implements UserDetails {
     // via l'endpoint dédié /employe (voir UtilisateurServiceImpl.gererLienEmploye).
     @Column(name = "employe_id")
     private Long employeId;
+
+    // Super admin : privilège additionnel réservé au propriétaire de l'app, activé
+    // manuellement en base sur un compte ADMIN existant (jamais via l'UI normale).
+    // Volontairement PAS un rôle séparé (pas de RoleUtilisateur.SUPER_ADMIN) : le
+    // compte garde role=ADMIN, donc tous les contrôles isAdmin()/hasRole('ADMIN')
+    // déjà en place (Angular/Ionic/RN, 18 contrôleurs backend) continuent de
+    // fonctionner sans rien changer. Ce flag ne débloque QUE les endpoints qui le
+    // vérifient explicitement (voir BoutiqueController.modifierFonctionnalites).
+    @Column(name = "super_admin", columnDefinition = "TINYINT(1) DEFAULT 0")
+    private boolean superAdmin = false;
 
     @PrePersist
     protected void onCreate() {

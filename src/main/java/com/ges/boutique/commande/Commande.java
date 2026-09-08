@@ -96,6 +96,21 @@ public class Commande {
     @Column(name = "notes", length = 500)
     private String notes;
 
+    // Livraison — renseignés au moment de valider() une commande (surtout utile pour
+    // celles venues de la vitrine, à livrer). Jamais obligatoires : une commande retirée
+    // en magasin n'a besoin d'aucun des quatre champs ci-dessous.
+    @Column(name = "adresse_livraison", length = 500)
+    private String adresseLivraison;
+
+    @Column(name = "frais_livraison")
+    private Double fraisLivraison;
+
+    @Column(name = "chauffeur_nom")
+    private String chauffeurNom;
+
+    @Column(name = "chauffeur_telephone")
+    private String chauffeurTelephone;
+
     @PrePersist
     protected void onCreate() {
         dateCommande = LocalDateTime.now();

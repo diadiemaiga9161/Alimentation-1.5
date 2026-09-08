@@ -1,0 +1,12 @@
+-- Découvert en ajoutant PROGRAMME_FIDELITE à CleFonctionnalite : Hibernate avait créé
+-- la colonne "cle" comme un ENUM MySQL natif figé sur les 11 valeurs qui existaient au
+-- moment de la toute première création de la table, pas comme un VARCHAR. ddl-auto=update
+-- n'élargit JAMAIS un ENUM MySQL existant (même règle que pour les contraintes NOT NULL,
+-- voir V105) : toute nouvelle clé ajoutée à l'enum Java plante en écriture avec
+-- "Data truncated for column 'cle'" (valeur absente de la liste ENUM) — confirmé en local
+-- en essayant d'activer/désactiver PROGRAMME_FIDELITE (HTTP 500).
+--
+-- Cette même colonne doit être élargie à CHAQUE future fonctionnalité ajoutée sous le
+-- même système (voir feature.CleFonctionnalite) — d'où le passage définitif en VARCHAR
+-- ici, qui n'a plus jamais besoin d'être retouché pour ça.
+ALTER TABLE fonctionnalite_boutique MODIFY COLUMN cle VARCHAR(40) NOT NULL;
