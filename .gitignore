@@ -45,3 +45,6 @@ replay_pid*.log
 logs/
 backend-local-stdout.log
 backend-local-stderr.log
+
+# Config locale des agents Claude Code — reste en local/prive, jamais sur GitHub.
+.claude/
